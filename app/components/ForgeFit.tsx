@@ -2065,10 +2065,12 @@ useEffect(() => {
   const isCoach = normalizeRole(state.settings.role) === "coach";
 
   useEffect(() => {
-    if (!supabaseEnabled || !authUser || !supabase) return;
+    if (!supabaseEnabled || !authUser) return;
+    const supabaseClient = supabase;
+    if (!supabaseClient) return;
     if (!isCoach) return;
     const loadCoach = async () => {
-      const clientsRes = await supabase
+      const clientsRes = await supabaseClient
         .from("coach_clients")
         .select("athlete_id, athlete_email")
         .eq("coach_id", authUser.id);
@@ -2081,7 +2083,7 @@ useEffect(() => {
         );
       }
 
-      const assignRes = await supabase
+      const assignRes = await supabaseClient
         .from("coach_assignments")
         .select("id, athlete_id, template_name")
         .eq("coach_id", authUser.id)

@@ -1,8 +1,9 @@
 "use client";
 
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import type { User } from "@supabase/supabase-js";
 import {
   Card,
   CardContent,
@@ -54,14 +55,23 @@ import {
   ChevronRight,
   Flame,
   CalendarDays,
+  Home,
   Trophy,
   HelpCircle,
   Zap,
   Heart,
+  User,
+  UserPlus,
+  MessageCircle,
+  Send,
   Loader2,
   Settings as SettingsIcon,
   ChevronDown,
+  MoreHorizontal,
+  Play,
+  Star,
 } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
 /**
  * Workout Tracking App
@@ -96,6 +106,8 @@ type Template = {
   id: string;
   name: string;
   exercises: TemplateExercise[];
+  source?: "generated" | "custom" | "coach" | "custom_split";
+  splitKey?: string;
 };
 
 type SetEntry = {
@@ -129,6 +141,11 @@ type Session = {
   notes?: string;
 };
 
+type WeighIn = {
+  dateISO: string;
+  weight: number;
+};
+
 type GoalMetric = "e1rm" | "top_set_weight" | "volume";
 
 type GoalStatus = "active" | "done" | "archived";
@@ -142,7 +159,7 @@ type Goal = {
   status: GoalStatus;
 };
 
-type UserRole = "athlete" | "coach";
+type UserRole = "athlete" | "smart_trainer" | "coach";
 type Theme = "neon" | "iron" | "dune" | "noir";
 type Weekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
 type WeekSchedule = Record<Weekday, string>;
@@ -152,6 +169,18 @@ type Profile = {
   age: string;
   height: string;
   weight: string;
+  birthdate: string;
+  gender?: "male" | "female" | "prefer_not";
+  coachNotes?: string;
+  favoriteExercises?: string[];
+  recentExercises?: string[];
+  username?: string;
+  shareWorkouts?: boolean;
+  sharePRs?: boolean;
+  shareWeighIns?: boolean;
+  shareTrophies?: boolean;
+  shareGoals?: boolean;
+  shareStreaks?: boolean;
   completed: boolean;
   introSeen: boolean;
 };
@@ -172,11 +201,27 @@ type Settings = {
 type ExperienceLevel = "beginner" | "intermediate" | "advanced";
 type SplitType = "full_body" | "upper_lower" | "ppl" | "phul" | "bro_split" | "custom";
 type FocusType = "general" | "strength" | "hypertrophy" | "fat_loss" | "athletic";
+type GenderStyle = "neutral" | "glute" | "mass";
+
+type Achievement = {
+  id: string;
+  title: string;
+  description: string;
+  icon: typeof Trophy;
+};
+
+type UnlockedAchievement = {
+  id: string;
+  unlockedAt: string;
+};
 
 type AppState = {
   templates: Template[];
   sessions: Session[];
   goals: Goal[];
+  weighIns: WeighIn[];
+  achievements: UnlockedAchievement[];
+  savedSplits: Record<string, Template[]>;
   settings: Settings;
 };
 
@@ -205,6 +250,146 @@ type WorkingEntry = {
 
 // -------------------- Utilities --------------------
 
+const mergeById = <T extends { id?: string }>(local: T[], remote: T[]) => {
+  const merged = new Map<string, T>();
+  for (const item of remote || []) {
+    if (item?.id) merged.set(item.id, item);
+  }
+  for (const item of local || []) {
+    if (item?.id) merged.set(item.id, item);
+  }
+  return Array.from(merged.values());
+};
+
+const mergeByKey = <T extends Record<string, any>>(
+  local: T[],
+  remote: T[],
+  key: keyof T
+) => {
+  const merged = new Map<string, T>();
+  for (const item of remote || []) {
+    const k = String(item?.[key] ?? "");
+    if (k) merged.set(k, item);
+  }
+  for (const item of local || []) {
+    const k = String(item?.[key] ?? "");
+    if (k) merged.set(k, item);
+  }
+  return Array.from(merged.values());
+};
+
+const normalizeRole = (role: any): UserRole =>
+  role === "coach" ? "coach" : role === "smart_trainer" ? "smart_trainer" : "athlete";
+
+const isProfileEmpty = (profile: Profile) =>
+  !profile.name && !profile.age && !profile.height && !profile.weight && !profile.birthdate;
+
+const isStateEmpty = (state: AppState) =>
+  (state.templates || []).length === 0 &&
+  (state.sessions || []).length === 0 &&
+  (state.goals || []).length === 0 &&
+  (state.weighIns || []).length === 0 &&
+  isProfileEmpty(state.settings.profile);
+
+const mergeStates = (local: AppState, remote: AppState): AppState => {
+  const mergedTemplates = mergeById(local.templates || [], remote.templates || []);
+  const mergedSessions = mergeById(local.sessions || [], remote.sessions || []);
+  const mergedGoals = mergeById(local.goals || [], remote.goals || []);
+  const mergedWeighIns = mergeByKey(local.weighIns || [], remote.weighIns || [], "dateISO");
+  const mergedAchievements = mergeById(local.achievements || [], remote.achievements || []);
+  const mergedSavedSplits = {
+    ...(remote.savedSplits || {}),
+    ...(local.savedSplits || {}),
+  };
+
+  const localProfile = local.settings.profile;
+  const remoteProfile = remote.settings.profile;
+  const mergedProfile = isProfileEmpty(localProfile) ? remoteProfile : localProfile;
+
+  const mergedSchedule =
+    Object.values(local.settings.schedule || {}).some(Boolean) ||
+    !Object.values(remote.settings.schedule || {}).some(Boolean)
+      ? local.settings.schedule
+      : remote.settings.schedule;
+
+  const localRole = normalizeRole(local.settings.role);
+  const remoteRole = normalizeRole(remote.settings.role);
+  const mergedRole =
+    isStateEmpty(local) && (remoteRole === "coach" || remoteRole === "smart_trainer")
+      ? remoteRole
+      : localRole;
+
+  return {
+    ...local,
+    templates: mergedTemplates,
+    sessions: mergedSessions,
+    goals: mergedGoals,
+    weighIns: mergedWeighIns,
+    achievements: mergedAchievements,
+    savedSplits: mergedSavedSplits,
+    settings: {
+      ...local.settings,
+      role: mergedRole,
+      schedule: mergedSchedule,
+      profile: {
+        ...remoteProfile,
+        ...mergedProfile,
+      },
+    },
+  };
+};
+
+const buildSessionStats = (sessions: Session[]) => {
+  const sorted = [...sessions].sort(
+    (a, b) => new Date(b.dateISO).getTime() - new Date(a.dateISO).getTime()
+  );
+  const today = new Date();
+  const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+  const sessionDays = new Set<string>();
+  let totalVolume = 0;
+
+  for (const s of sorted) {
+    const d = new Date(s.dateISO);
+    sessionDays.add(dayKey(d));
+    for (const e of s.entries) {
+      for (const set of e.sets) {
+        const reps = Number(set.reps) || 0;
+        const wt = Number(set.weight) || 0;
+        totalVolume += reps * wt;
+      }
+    }
+  }
+
+  let streak = 0;
+  const cursor = new Date(dayKey(today));
+  while (sessionDays.has(dayKey(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  const vol7d = sorted
+    .filter((s) => new Date(s.dateISO) >= new Date(dayKey(sevenDaysAgo)))
+    .reduce((acc, s) => {
+      let v = 0;
+      for (const e of s.entries) for (const set of e.sets) v += (Number(set.reps) || 0) * (Number(set.weight) || 0);
+      return acc + v;
+    }, 0);
+
+  const last = sorted[0]?.dateISO ? new Date(sorted[0].dateISO) : null;
+
+  return {
+    totalSessions: sorted.length,
+    streak,
+    vol7d,
+    totalVolume,
+    lastLabel: last
+      ? last.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      : "—",
+  };
+};
+
 const LS_KEY = "forgefit_v1";
 
 const uid = () =>
@@ -214,6 +399,189 @@ const uid = () =>
 
 const clamp = (n: number, min: number, max: number) =>
   Math.min(max, Math.max(min, n));
+
+const buildSplitKey = (opts: {
+  split: SplitType;
+  focus: FocusType;
+  experience: ExperienceLevel;
+  daysPerWeek: number;
+  style: GenderStyle;
+  includeDeload?: boolean;
+}) =>
+  [
+    opts.split,
+    opts.focus,
+    opts.experience,
+    opts.daysPerWeek,
+    opts.style,
+    opts.includeDeload ? "deload" : "standard",
+  ].join("|");
+
+const isProgramTemplate = (t: Template) =>
+  t.source === "generated" || t.source === "custom_split";
+
+const stashProgramTemplates = (
+  templates: Template[],
+  savedSplits: Record<string, Template[]>
+) => {
+  const next = { ...(savedSplits || {}) };
+  const grouped: Record<string, Template[]> = {};
+  templates.filter(isProgramTemplate).forEach((t) => {
+    if (!t.splitKey) return;
+    grouped[t.splitKey] = grouped[t.splitKey] ? [...grouped[t.splitKey], t] : [t];
+  });
+  Object.entries(grouped).forEach(([key, list]) => {
+    next[key] = list;
+  });
+  return next;
+};
+
+const removeTemplatesFromSchedule = (schedule: WeekSchedule, removeIds: Set<string>) => {
+  const next = { ...schedule };
+  (Object.keys(next) as Array<keyof WeekSchedule>).forEach((key) => {
+    if (removeIds.has(String(next[key]))) {
+      next[key] = "";
+    }
+  });
+  return next;
+};
+
+const ACHIEVEMENTS: Achievement[] = [
+  {
+    id: "first_session",
+    title: "First Blood",
+    description: "Log your first workout session.",
+    icon: Trophy,
+  },
+  {
+    id: "streak_7",
+    title: "7-Day Streak",
+    description: "Train 7 days in a row.",
+    icon: Flame,
+  },
+  {
+    id: "streak_30",
+    title: "30-Day Streak",
+    description: "Train 30 days in a row.",
+    icon: Flame,
+  },
+  {
+    id: "sessions_10",
+    title: "Double Digits",
+    description: "Complete 10 sessions.",
+    icon: History,
+  },
+  {
+    id: "sessions_50",
+    title: "Veteran",
+    description: "Complete 50 sessions.",
+    icon: History,
+  },
+  {
+    id: "volume_25k",
+    title: "Volume Machine",
+    description: "Hit 25,000 total training volume.",
+    icon: TrendingUp,
+  },
+  {
+    id: "bench_135",
+    title: "Bench 135",
+    description: "Press 135 lb (60 kg) on bench.",
+    icon: Dumbbell,
+  },
+  {
+    id: "bench_225",
+    title: "Bench 225",
+    description: "Press 225 lb (100 kg) on bench.",
+    icon: Dumbbell,
+  },
+  {
+    id: "squat_225",
+    title: "Squat 225",
+    description: "Squat 225 lb (100 kg).",
+    icon: Dumbbell,
+  },
+  {
+    id: "squat_315",
+    title: "Squat 315",
+    description: "Squat 315 lb (140 kg).",
+    icon: Dumbbell,
+  },
+  {
+    id: "deadlift_315",
+    title: "Deadlift 315",
+    description: "Pull 315 lb (140 kg).",
+    icon: Dumbbell,
+  },
+  {
+    id: "deadlift_405",
+    title: "Deadlift 405",
+    description: "Pull 405 lb (180 kg).",
+    icon: Dumbbell,
+  },
+];
+
+const getLiftThreshold = (units: Units, lb: number, kg: number) =>
+  units === "kg" ? kg : lb;
+
+const buildAchievementUnlocks = (
+  sessions: Session[],
+  units: Units,
+  existing: UnlockedAchievement[]
+) => {
+  const unlocked = new Map(existing.map((a) => [a.id, a.unlockedAt]));
+  const sessionDays = new Set<string>();
+  let totalVolume = 0;
+  const best = { bench: 0, squat: 0, deadlift: 0 };
+
+  const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+  for (const s of sessions) {
+    sessionDays.add(dayKey(new Date(s.dateISO)));
+    for (const e of s.entries) {
+      const name = String(e.exerciseName || "").toLowerCase();
+      for (const set of e.sets || []) {
+        const reps = Number(set.reps) || 0;
+        const wt = Number(set.weight) || 0;
+        totalVolume += reps * wt;
+        if (name.includes("bench")) best.bench = Math.max(best.bench, wt);
+        if (name.includes("squat")) best.squat = Math.max(best.squat, wt);
+        if (name.includes("deadlift") || name.includes("dead lift")) {
+          best.deadlift = Math.max(best.deadlift, wt);
+        }
+      }
+    }
+  }
+
+  let streak = 0;
+  const cursor = new Date(dayKey(new Date()));
+  while (sessionDays.has(dayKey(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  const unlock = (id: string) => {
+    if (!unlocked.has(id)) unlocked.set(id, todayISO());
+  };
+
+  if (sessions.length >= 1) unlock("first_session");
+  if (sessions.length >= 10) unlock("sessions_10");
+  if (sessions.length >= 50) unlock("sessions_50");
+  if (totalVolume >= 25000) unlock("volume_25k");
+  if (streak >= 7) unlock("streak_7");
+  if (streak >= 30) unlock("streak_30");
+
+  if (best.bench >= getLiftThreshold(units, 135, 60)) unlock("bench_135");
+  if (best.bench >= getLiftThreshold(units, 225, 100)) unlock("bench_225");
+  if (best.squat >= getLiftThreshold(units, 225, 100)) unlock("squat_225");
+  if (best.squat >= getLiftThreshold(units, 315, 140)) unlock("squat_315");
+  if (best.deadlift >= getLiftThreshold(units, 315, 140)) unlock("deadlift_315");
+  if (best.deadlift >= getLiftThreshold(units, 405, 180)) unlock("deadlift_405");
+
+  return Array.from(unlocked.entries()).map(([id, unlockedAt]) => ({
+    id,
+    unlockedAt,
+  }));
+};
 
 // Epley e1RM: weight * (1 + reps/30)
 const e1rm = (weight: number, reps: number) => {
@@ -228,6 +596,13 @@ const roundTo = (n: number, step = 0.5) => {
   return Math.round(v / step) * step;
 };
 
+const formatMMSS = (totalSeconds: number) => {
+  const safe = Math.max(0, Math.round(totalSeconds));
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+};
+
 const formatDate = (d: string) => {
   try {
     return new Date(d).toLocaleDateString(undefined, {
@@ -238,6 +613,23 @@ const formatDate = (d: string) => {
   } catch {
     return String(d);
   }
+};
+
+const calcTrend = (points: Array<{ dateISO: string; weight: number }>) => {
+  if (points.length < 3) return null;
+  const sorted = [...points].sort((a, b) => String(a.dateISO).localeCompare(String(b.dateISO)));
+  const t0 = new Date(sorted[0].dateISO).getTime();
+  const xs = sorted.map((p) => (new Date(p.dateISO).getTime() - t0) / 86400000);
+  const ys = sorted.map((p) => p.weight);
+  const n = xs.length;
+  const sumX = xs.reduce((a, b) => a + b, 0);
+  const sumY = ys.reduce((a, b) => a + b, 0);
+  const sumXY = xs.reduce((a, x, i) => a + x * ys[i], 0);
+  const sumXX = xs.reduce((a, x) => a + x * x, 0);
+  const denom = n * sumXX - sumX * sumX;
+  if (!denom) return null;
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  return { slopePerDay: slope, points: sorted };
 };
 
 const WEEKDAYS: Array<{ key: Weekday; label: string; short: string; index: number }> = [
@@ -368,6 +760,12 @@ const formatRepRange = (range: RepRange) => {
 
 const SUPERSET_TAGS = ["A", "B", "C", "D"];
 
+const getWeightSliderConfig = (units: Units) => {
+  const step = 2.5;
+  const max = units === "kg" ? 300 : 700;
+  return { step, max };
+};
+
 // -------------------- Common Exercise Library --------------------
 
 // Note: This library powers the "Add from library" dropdown and the Program Generator.
@@ -407,6 +805,14 @@ const COMMON_EXERCISES: Array<Omit<TemplateExercise, "id">> = [
     autoProgress: true,
   },
   {
+    name: "Dumbbell Romanian Deadlift",
+    defaultSets: 3,
+    repRange: { min: 8, max: 12 },
+    restSec: 120,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
     name: "Bench Press",
     defaultSets: 3,
     repRange: { min: 5, max: 8 },
@@ -438,6 +844,14 @@ const COMMON_EXERCISES: Array<Omit<TemplateExercise, "id">> = [
     weightStep: 5,
     autoProgress: true,
   },
+  {
+    name: "Chest Supported Row",
+    defaultSets: 3,
+    repRange: { min: 8, max: 12 },
+    restSec: 120,
+    weightStep: 5,
+    autoProgress: true,
+  },
 
   // Pulling / back
   {
@@ -449,10 +863,26 @@ const COMMON_EXERCISES: Array<Omit<TemplateExercise, "id">> = [
     autoProgress: true,
   },
   {
+    name: "Assisted Pull-Up",
+    defaultSets: 3,
+    repRange: { min: 6, max: 10 },
+    restSec: 120,
+    weightStep: 5,
+    autoProgress: false,
+  },
+  {
     name: "Pull-Up",
     defaultSets: 3,
     repRange: { min: 5, max: 10 },
     restSec: 120,
+    weightStep: 5,
+    autoProgress: false,
+  },
+  {
+    name: "Weighted Pull-Up",
+    defaultSets: 3,
+    repRange: { min: 4, max: 8 },
+    restSec: 150,
     weightStep: 5,
     autoProgress: false,
   },
@@ -475,11 +905,59 @@ const COMMON_EXERCISES: Array<Omit<TemplateExercise, "id">> = [
     autoProgress: true,
   },
   {
+    name: "Seated Hamstring Curl",
+    defaultSets: 3,
+    repRange: { min: 10, max: 15 },
+    restSec: 90,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
     name: "Calf Raise",
     defaultSets: 3,
     repRange: { min: 10, max: 15 },
     restSec: 75,
     weightStep: 5,
+    autoProgress: true,
+  },
+  {
+    name: "Hip Abduction",
+    defaultSets: 3,
+    repRange: { min: 12, max: 20 },
+    restSec: 60,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
+    name: "Glute Bridge",
+    defaultSets: 3,
+    repRange: { min: 10, max: 15 },
+    restSec: 90,
+    weightStep: 10,
+    autoProgress: true,
+  },
+  {
+    name: "Cable Kickback",
+    defaultSets: 3,
+    repRange: { min: 12, max: 15 },
+    restSec: 60,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
+    name: "Step-Up",
+    defaultSets: 3,
+    repRange: { min: 8, max: 12 },
+    restSec: 90,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
+    name: "Hack Squat",
+    defaultSets: 3,
+    repRange: { min: 8, max: 12 },
+    restSec: 120,
+    weightStep: 10,
     autoProgress: true,
   },
 
@@ -589,6 +1067,78 @@ const COMMON_EXERCISES: Array<Omit<TemplateExercise, "id">> = [
     restSec: 60,
     weightStep: 5,
     autoProgress: true,
+  },
+  {
+    name: "Dumbbell Shoulder Press",
+    defaultSets: 3,
+    repRange: { min: 8, max: 12 },
+    restSec: 120,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
+    name: "Rear Delt Fly",
+    defaultSets: 3,
+    repRange: { min: 12, max: 20 },
+    restSec: 60,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
+    name: "Cable Fly",
+    defaultSets: 3,
+    repRange: { min: 10, max: 15 },
+    restSec: 75,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
+    name: "Incline Cable Fly",
+    defaultSets: 3,
+    repRange: { min: 10, max: 15 },
+    restSec: 75,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
+    name: "Upper Cable Fly",
+    defaultSets: 3,
+    repRange: { min: 10, max: 15 },
+    restSec: 75,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
+    name: "Rope Pushdown",
+    defaultSets: 3,
+    repRange: { min: 12, max: 15 },
+    restSec: 60,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
+    name: "Overhead Triceps Extension",
+    defaultSets: 3,
+    repRange: { min: 10, max: 12 },
+    restSec: 75,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
+    name: "Incline Dumbbell Press",
+    defaultSets: 3,
+    repRange: { min: 8, max: 12 },
+    restSec: 120,
+    weightStep: 5,
+    autoProgress: true,
+  },
+  {
+    name: "Dips",
+    defaultSets: 3,
+    repRange: { min: 6, max: 12 },
+    restSec: 120,
+    weightStep: 0,
+    autoProgress: false,
   },
   {
     name: "Bulgarian Split Squat",
@@ -1244,6 +1794,9 @@ const defaultState: AppState = {
   templates: [],
   sessions: [],
   goals: [],
+  weighIns: [],
+  achievements: [],
+  savedSplits: {},
   settings: {
     units: "lb",
     autoGoalMode: true,
@@ -1259,10 +1812,47 @@ const defaultState: AppState = {
       age: "",
       height: "",
       weight: "",
+      birthdate: "",
+      gender: "prefer_not",
+      coachNotes: "",
+      favoriteExercises: [],
+      recentExercises: [],
+      username: "",
+      shareWorkouts: true,
+      sharePRs: true,
+      shareWeighIns: false,
+      shareTrophies: true,
+      shareGoals: false,
+      shareStreaks: true,
       completed: false,
       introSeen: false,
     },
   },
+};
+
+const pageMotion = {
+  hidden: { opacity: 0, y: 8 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1], when: "beforeChildren", staggerChildren: 0.04 },
+  },
+  exit: { opacity: 0, y: 6, transition: { duration: 0.16 } },
+};
+
+const cardMotion = {
+  hidden: { opacity: 0, y: 10, scale: 0.985 },
+  show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] } },
+};
+
+const listMotion = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.03 } },
+};
+
+const listItemMotion = {
+  hidden: { opacity: 0, y: 6 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.2, ease: "easeOut" } },
 };
 
 // -------------------- Main Component --------------------
@@ -1270,6 +1860,23 @@ const defaultState: AppState = {
 export default function WorkoutTrackerApp() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  const supabaseEnabled = !!supabase;
+  const [authReady, setAuthReady] = useState(!supabaseEnabled);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [remoteLoaded, setRemoteLoaded] = useState(false);
+  const [pendingRemote, setPendingRemote] = useState<AppState | null>(null);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
+  const [syncError, setSyncError] = useState("");
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const stateRef = useRef<AppState | null>(null);
 
   const [state, setState] = useState<AppState>(() => {
     const stored =
@@ -1286,7 +1893,7 @@ export default function WorkoutTrackerApp() {
       settings: {
         ...defaultState.settings,
         ...(parsed as any).settings,
-        role: ((parsed as any)?.settings?.role === "coach" ? "coach" : "athlete") as UserRole,
+        role: normalizeRole((parsed as any)?.settings?.role),
         theme:
           (parsed as any)?.settings?.theme === "iron" ||
           (parsed as any)?.settings?.theme === "dune" ||
@@ -1308,8 +1915,32 @@ export default function WorkoutTrackerApp() {
         : defaultState.templates,
       sessions: Array.isArray((parsed as any).sessions) ? (parsed as any).sessions : [],
       goals: Array.isArray((parsed as any).goals) ? (parsed as any).goals : [],
+      weighIns: Array.isArray((parsed as any).weighIns) ? (parsed as any).weighIns : [],
+      savedSplits:
+        (parsed as any)?.savedSplits && typeof (parsed as any).savedSplits === "object"
+          ? (parsed as any).savedSplits
+          : defaultState.savedSplits,
+      achievements: Array.isArray((parsed as any).achievements)
+        ? (parsed as any).achievements
+        : defaultState.achievements,
     };
   });
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateOnline = () => setIsOnline(navigator.onLine);
+    updateOnline();
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOnline);
+    return () => {
+      window.removeEventListener("online", updateOnline);
+      window.removeEventListener("offline", updateOnline);
+    };
+  }, []);
 
 // Dark mode (shadcn / Tailwind compatible)
 useEffect(() => {
@@ -1326,17 +1957,22 @@ useEffect(() => {
   }, [state.settings.theme]);
 
   const [activeTab, setActiveTab] = useState<
-    "log" | "history" | "insights" | "calc" | "coach"
-  >("log");
+    "dashboard" | "social" | "profile" | "more"
+  >("dashboard");
   const [selectedTemplateId, setSelectedTemplateId] = useState(
     state.templates?.[0]?.id || ""
   );
   const [sessionDate, setSessionDate] = useState(todayISO());
   const [sessionNotes, setSessionNotes] = useState("");
+  const [weighInInput, setWeighInInput] = useState("");
+  const [weighInEditing, setWeighInEditing] = useState(false);
+  const [birthdayClaimed, setBirthdayClaimed] = useState(false);
   const [search, setSearch] = useState("");
   const [forceLog, setForceLog] = useState(false);
   const [gymMode, setGymMode] = useState(false);
   const [gymStepIndex, setGymStepIndex] = useState(0);
+  const [includeFinishers, setIncludeFinishers] = useState<boolean | null>(null);
+  const [finisherPromptOpen, setFinisherPromptOpen] = useState(false);
 
   // log mode
   const [logMode, setLogMode] = useState<"template" | "custom">("template");
@@ -1351,6 +1987,8 @@ useEffect(() => {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportText, setExportText] = useState("");
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [confirmDeleteAccountOpen, setConfirmDeleteAccountOpen] = useState(false);
+  const [deleteAccountLoading, setDeleteAccountLoading] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [recapOpen, setRecapOpen] = useState(false);
   const [recapData, setRecapData] = useState<{
@@ -1360,12 +1998,25 @@ useEffect(() => {
     totalTimeMin: number;
     exercises: number;
     prCount: number;
+    topSets: Array<{ name: string; weight: number; reps: number }>;
+    nextTargets: Array<{ name: string; weight: number; reps: number }>;
   } | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [restRunning, setRestRunning] = useState(false);
   const [restPresetSec, setRestPresetSec] = useState(90);
+  const [restTargetSec, setRestTargetSec] = useState(0);
   const [autoAdvanceAfterRest, setAutoAdvanceAfterRest] = useState(false);
+  const [showGymNotes, setShowGymNotes] = useState(false);
+  const [trophyPopupOpen, setTrophyPopupOpen] = useState(false);
+  const [trophyPopupIds, setTrophyPopupIds] = useState<string[]>([]);
+  const [sessionStartTs, setSessionStartTs] = useState<number | null>(null);
+  const [sessionElapsedSec, setSessionElapsedSec] = useState(0);
+  const [totalRestSec, setTotalRestSec] = useState(0);
+  const [restCount, setRestCount] = useState(0);
+  const [swapOpen, setSwapOpen] = useState(false);
+  const [showPRCelebration, setShowPRCelebration] = useState(false);
   const [setupCollapsed, setSetupCollapsed] = useState(false);
+  const [draggedDay, setDraggedDay] = useState<Weekday | null>(null);
   const [coachPackageText, setCoachPackageText] = useState("");
   const [clientImportText, setClientImportText] = useState("");
   const [clientSummary, setClientSummary] = useState<{
@@ -1375,11 +2026,323 @@ useEffect(() => {
     vol7d: number;
     lastLabel: string;
   } | null>(null);
+  const [coachClients, setCoachClients] = useState<Array<{ athleteId: string | null; email: string }>>([]);
+  const [coachInviteEmail, setCoachInviteEmail] = useState("");
+  const [coachAssignments, setCoachAssignments] = useState<Array<{ id: string; athleteId: string; templateName: string }>>([]);
+  const [coachClientProgress, setCoachClientProgress] = useState<{
+    athleteId: string;
+    sessions: number;
+    lastDate: string;
+    volume7d: number;
+  } | null>(null);
+  const [coachLinkEmail, setCoachLinkEmail] = useState("");
+  const [athleteAssignments, setAthleteAssignments] = useState<Array<{ id: string; template: Template }>>([]);
+  const [friendSearch, setFriendSearch] = useState("");
+  const [friendResults, setFriendResults] = useState<Array<{ userId: string; username: string }>>([]);
+  const [friendRequests, setFriendRequests] = useState<Array<{ id: string; fromId: string; fromName: string }>>([]);
+  const [friends, setFriends] = useState<Array<{ userId: string; username: string }>>([]);
+  const [socialFeed, setSocialFeed] = useState<Array<{ id: string; actor: string; type: string; payload: any; createdAt: string }>>([]);
+  const [postLikes, setPostLikes] = useState<Record<string, { count: number; liked: boolean }>>({});
+  const [postComments, setPostComments] = useState<Record<string, Array<{ id: string; author: string; body: string; createdAt: string }>>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [challengeTitle, setChallengeTitle] = useState("");
+  const [challengeType, setChallengeType] = useState<"volume" | "workouts" | "prs">("volume");
+  const [challenges, setChallenges] = useState<Array<{ id: string; title: string; type: string; start: string; end: string; joined: boolean }>>([]);
+  const [challengeLeaders, setChallengeLeaders] = useState<Record<string, Array<{ username: string; score: number }>>>({});
+  const [selectedMessageFriend, setSelectedMessageFriend] = useState<{ userId: string; username: string } | null>(null);
+  const [messageDraft, setMessageDraft] = useState("");
+  const [messages, setMessages] = useState<Array<{ id: string; from: string; body: string; createdAt: string }>>([]);
+  const [workoutInvites, setWorkoutInvites] = useState<Array<{ id: string; fromId: string; fromName: string; template: Template }>>([]);
+  const [socialFriendsOpen, setSocialFriendsOpen] = useState(false);
+  const [socialMessagesOpen, setSocialMessagesOpen] = useState(false);
+  const [socialInvitesOpen, setSocialInvitesOpen] = useState(false);
+  const [socialChallengesOpen, setSocialChallengesOpen] = useState(false);
+  const [customSplitName, setCustomSplitName] = useState("My Split");
+  const [customSplitDays, setCustomSplitDays] = useState<Weekday[]>(["mon", "wed", "fri"]);
 
-  const isCoach = state.settings.role === "coach";
+  const isCoach = normalizeRole(state.settings.role) === "coach";
+
+  useEffect(() => {
+    if (!supabaseEnabled || !authUser || !supabase) return;
+    if (!isCoach) return;
+    const loadCoach = async () => {
+      const clientsRes = await supabase
+        .from("coach_clients")
+        .select("athlete_id, athlete_email")
+        .eq("coach_id", authUser.id);
+      if (!clientsRes.error) {
+        setCoachClients(
+          (clientsRes.data || []).map((c: any) => ({
+            athleteId: c.athlete_id,
+            email: c.athlete_email,
+          }))
+        );
+      }
+
+      const assignRes = await supabase
+        .from("coach_assignments")
+        .select("id, athlete_id, template_name")
+        .eq("coach_id", authUser.id)
+        .order("created_at", { ascending: false })
+        .limit(6);
+      if (!assignRes.error) {
+        setCoachAssignments(
+          (assignRes.data || []).map((a: any) => ({
+            id: a.id,
+            athleteId: a.athlete_id,
+            templateName: a.template_name,
+          }))
+        );
+      }
+    };
+    loadCoach();
+  }, [supabaseEnabled, authUser, isCoach]);
+
+  useEffect(() => {
+    if (!supabaseEnabled || !authUser || !supabase) return;
+    if (isCoach) return;
+    const loadAssignments = async () => {
+      const assignRes = await supabase
+        .from("coach_assignments")
+        .select("id, template")
+        .eq("athlete_id", authUser.id)
+        .order("created_at", { ascending: false })
+        .limit(6);
+      if (!assignRes.error) {
+        setAthleteAssignments(
+          (assignRes.data || []).map((a: any) => ({
+            id: a.id,
+            template: a.template,
+          }))
+        );
+      }
+    };
+    loadAssignments();
+  }, [supabaseEnabled, authUser, isCoach, supabase]);
+
+  useEffect(() => {
+    if (!supabaseEnabled || !authUser || !supabase) return;
+    const loadSocial = async () => {
+      const friendsRes = await supabase
+        .from("friendships")
+        .select("friend_id, friend:profiles(username)")
+        .eq("user_id", authUser.id);
+      if (!friendsRes.error) {
+        setFriends(
+          (friendsRes.data || [])
+            .map((f: any) => ({
+              userId: f.friend_id,
+              username: f.friend?.username || "Athlete",
+            }))
+            .filter((f: any) => f.userId)
+        );
+      }
+
+      const requestRes = await supabase
+        .from("friend_requests")
+        .select("id, requester_id, requester:profiles(username)")
+        .eq("addressee_id", authUser.id)
+        .eq("status", "pending");
+      if (!requestRes.error) {
+        setFriendRequests(
+          (requestRes.data || []).map((r: any) => ({
+            id: r.id,
+            fromId: r.requester_id,
+            fromName: r.requester?.username || "Athlete",
+          }))
+        );
+      }
+
+      const ids = [authUser.id, ...(friendsRes.data || []).map((f: any) => f.friend_id)].filter(Boolean);
+      if (ids.length) {
+        const feedRes = await supabase
+          .from("social_posts")
+          .select("id, actor_id, type, payload, created_at, actor:profiles(username)")
+          .in("actor_id", ids)
+          .order("created_at", { ascending: false })
+          .limit(30);
+        if (!feedRes.error) {
+          const mapped = (feedRes.data || []).map((p: any) => ({
+            id: p.id,
+            actor: p.actor?.username || "Athlete",
+            type: p.type,
+            payload: p.payload,
+            createdAt: p.created_at,
+          }));
+          setSocialFeed(mapped);
+          const postIds = mapped.map((p) => p.id);
+          if (postIds.length) {
+            const [likesRes, commentsRes] = await Promise.all([
+              supabase.from("social_likes").select("post_id, user_id").in("post_id", postIds),
+              supabase
+                .from("social_comments")
+                .select("id, post_id, body, created_at, author:profiles(username)")
+                .in("post_id", postIds)
+                .order("created_at", { ascending: false }),
+            ]);
+            if (!likesRes.error) {
+              const likesMap: Record<string, { count: number; liked: boolean }> = {};
+              for (const row of likesRes.data || []) {
+                const key = row.post_id;
+                if (!likesMap[key]) likesMap[key] = { count: 0, liked: false };
+                likesMap[key].count += 1;
+                if (row.user_id === authUser.id) likesMap[key].liked = true;
+              }
+              setPostLikes(likesMap);
+            }
+            if (!commentsRes.error) {
+              const commentMap: Record<string, Array<{ id: string; author: string; body: string; createdAt: string }>> = {};
+              for (const row of commentsRes.data || []) {
+                const key = row.post_id;
+                if (!commentMap[key]) commentMap[key] = [];
+                commentMap[key].push({
+                  id: row.id,
+                  author: row.author?.username || "Athlete",
+                  body: row.body,
+                  createdAt: row.created_at,
+                });
+              }
+              setPostComments(commentMap);
+            }
+          }
+        }
+      }
+
+      const nowIso = new Date().toISOString().slice(0, 10);
+      const challengeRes = await supabase
+        .from("challenges")
+        .select("id, title, type, start_date, end_date")
+        .gte("end_date", nowIso)
+        .order("start_date", { ascending: false })
+        .limit(8);
+      if (!challengeRes.error) {
+        const participantRes = await supabase
+          .from("challenge_participants")
+          .select("challenge_id")
+          .eq("user_id", authUser.id);
+        const joinedIds = new Set((participantRes.data || []).map((p: any) => p.challenge_id));
+        setChallenges(
+          (challengeRes.data || []).map((c: any) => ({
+            id: c.id,
+            title: c.title,
+            type: c.type,
+            start: c.start_date,
+            end: c.end_date,
+            joined: joinedIds.has(c.id),
+          }))
+        );
+      }
+
+      const invitesRes = await supabase
+        .from("workout_invites")
+        .select("id, sender_id, template, sender:profiles(username)")
+        .eq("recipient_id", authUser.id)
+        .eq("status", "pending");
+      if (!invitesRes.error) {
+        setWorkoutInvites(
+          (invitesRes.data || []).map((i: any) => ({
+            id: i.id,
+            fromId: i.sender_id,
+            fromName: i.sender?.username || "Athlete",
+            template: i.template,
+          }))
+        );
+      }
+    };
+    loadSocial();
+  }, [supabaseEnabled, authUser, supabase]);
+
+  useEffect(() => {
+    if (!selectedMessageFriend || !supabase || !authUser) return;
+    const loadMessages = async () => {
+      const res = await supabase
+        .from("messages")
+        .select("id, sender_id, body, created_at, sender:profiles(username)")
+        .or(
+          `and(sender_id.eq.${authUser.id},recipient_id.eq.${selectedMessageFriend.userId}),and(sender_id.eq.${selectedMessageFriend.userId},recipient_id.eq.${authUser.id})`
+        )
+        .order("created_at", { ascending: false })
+        .limit(40);
+      if (!res.error) {
+        setMessages(
+          (res.data || []).map((m: any) => ({
+            id: m.id,
+            from: m.sender?.username || "Athlete",
+            body: m.body,
+            createdAt: m.created_at,
+          }))
+        );
+      }
+    };
+    loadMessages();
+  }, [selectedMessageFriend, supabase, authUser]);
 
   const needsOnboarding = !state.settings.profile?.completed;
   const needsIntro = !state.settings.profile?.introSeen && !state.settings.profile?.completed;
+
+  const replaceProgramTemplates = useCallback(
+    (
+      templates: Template[],
+      days: Weekday[],
+      splitKey: string,
+      source: "generated" | "custom_split"
+    ) => {
+      setState((p) => {
+        const savedSplits = stashProgramTemplates(p.templates || [], p.savedSplits || {});
+        const removeIds = new Set(
+          (p.templates || []).filter(isProgramTemplate).map((t) => t.id)
+        );
+        const kept = (p.templates || []).filter((t) => !removeIds.has(t.id));
+        const nextTemplates = templates.map((t) => ({
+          ...t,
+          source,
+          splitKey,
+        }));
+        const nextSchedule = days.length
+          ? assignScheduleDays(
+              removeTemplatesFromSchedule(p.settings.schedule, removeIds),
+              nextTemplates,
+              days
+            )
+          : removeTemplatesFromSchedule(p.settings.schedule, removeIds);
+
+        return {
+          ...p,
+          templates: [...nextTemplates, ...kept],
+          settings: { ...p.settings, schedule: nextSchedule },
+          savedSplits: { ...savedSplits, [splitKey]: nextTemplates },
+        };
+      });
+      const first = templates[0];
+      if (first?.id) {
+        setSelectedTemplateId(first.id);
+      }
+      if (source === "custom_split") {
+        setTemplateDialogOpen(true);
+      }
+    },
+    []
+  );
+
+  const toggleCustomSplitDay = (key: Weekday) => {
+    setCustomSplitDays((prev) => {
+      const next = prev.includes(key) ? prev.filter((d) => d !== key) : [...prev, key];
+      return WEEKDAYS.filter((d) => next.includes(d.key)).map((d) => d.key);
+    });
+  };
+
+  useEffect(() => {
+    if (!state.sessions.length) return;
+    if ((state.achievements || []).length) return;
+    setState((p) => ({
+      ...p,
+      achievements: buildAchievementUnlocks(
+        p.sessions || [],
+        p.settings.units,
+        p.achievements || []
+      ),
+    }));
+  }, [state.sessions.length, state.settings.units, state.achievements.length]);
 
   const exportData = async () => {
     try {
@@ -1539,8 +2502,50 @@ useEffect(() => {
       const maxSetWeight = Math.max(0, ...entry.sets.map((s) => Number(s.weight) || 0));
       return maxSetWeight > prev ? count + 1 : count;
     }, 0);
+    const topSets = nonEmpty
+      .map((entry) => {
+        const best = (entry.sets || []).reduce(
+          (acc, s) => {
+            const weight = Number(s.weight) || 0;
+            const reps = Number(s.reps) || 0;
+            return weight > acc.weight ? { weight, reps } : acc;
+          },
+          { weight: 0, reps: 0 }
+        );
+        return best.weight > 0
+          ? { name: entry.exerciseName, weight: best.weight, reps: best.reps }
+          : null;
+      })
+      .filter((x): x is { name: string; weight: number; reps: number } => !!x)
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 3);
+    const nextTargets = nonEmpty
+      .map((entry) => {
+        const next = insights.suggestions?.[entry.exerciseName]?.next;
+        return next ? { name: entry.exerciseName, weight: next.weight, reps: next.reps } : null;
+      })
+      .filter((x): x is { name: string; weight: number; reps: number } => !!x)
+      .slice(0, 3);
 
-    setState((p) => ({ ...p, sessions: [session, ...(p.sessions || [])] }));
+    setState((p) => {
+      const nextSessions = [session, ...(p.sessions || [])];
+      const nextAchievements = buildAchievementUnlocks(
+        nextSessions,
+        p.settings.units,
+        p.achievements || []
+      );
+      const prevIds = new Set((p.achievements || []).map((a) => a.id));
+      const newlyUnlocked = nextAchievements.filter((a) => !prevIds.has(a.id));
+      if (newlyUnlocked.length) {
+        setTrophyPopupIds(newlyUnlocked.map((a) => a.id));
+        setTrophyPopupOpen(true);
+      }
+      return {
+        ...p,
+        sessions: nextSessions,
+        achievements: nextAchievements,
+      };
+    });
     setSessionNotes("");
     setRecapData({
       templateName: t.name,
@@ -1549,8 +2554,148 @@ useEffect(() => {
       totalTimeMin: totals.totalTimeMin,
       exercises: nonEmpty.length,
       prCount,
+      topSets,
+      nextTargets,
     });
+    if (prCount > 0) {
+      setShowPRCelebration(true);
+    }
     setRecapOpen(true);
+    if (supabaseEnabled && authUser) {
+      supabase
+        .from("user_sessions")
+        .upsert(
+          {
+            user_id: authUser.id,
+            session_id: session.id,
+            session,
+            created_at: session.dateISO,
+          },
+          { onConflict: "session_id" }
+        )
+        .then(({ error }) => {
+          if (error) console.warn("Supabase session upsert error", error.message);
+        });
+    }
+    if (supabaseEnabled && authUser && supabase) {
+      const share = state.settings.profile;
+      if (share.shareWorkouts) {
+        supabase.from("social_posts").insert({
+          actor_id: authUser.id,
+          type: "workout",
+          payload: {
+            templateName: t.name,
+            totalSets: totals.totalSets,
+            totalVolume: totals.totalVolume,
+            dateISO: session.dateISO,
+          },
+        });
+      }
+      if (share.sharePRs && prCount > 0) {
+        supabase.from("social_posts").insert({
+          actor_id: authUser.id,
+          type: "pr",
+          payload: {
+            prCount,
+            dateISO: session.dateISO,
+          },
+        });
+      }
+      if (share.shareStreaks && headerStats.streak > 0) {
+        supabase.from("social_posts").insert({
+          actor_id: authUser.id,
+          type: "streak",
+          payload: {
+            streak: headerStats.streak,
+            dateISO: session.dateISO,
+          },
+        });
+      }
+    }
+  };
+
+  const shareRecap = async () => {
+    if (!recapData || typeof window === "undefined") return;
+    const canvas = document.createElement("canvas");
+    const width = 1080;
+    const height = 1350;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, "#0b0b0b");
+    gradient.addColorStop(0.5, "#151515");
+    gradient.addColorStop(1, "#0b0b0b");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = "rgba(255,122,24,0.2)";
+    ctx.beginPath();
+    ctx.arc(width * 0.85, height * 0.15, 180, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "left";
+    ctx.font = "700 56px system-ui, -apple-system, sans-serif";
+    ctx.fillText("Forge Fitness", 72, 140);
+
+    ctx.font = "600 40px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = "#ff7a18";
+    ctx.fillText("Workout Recap", 72, 210);
+
+    ctx.fillStyle = "#f2f2f2";
+    ctx.font = "500 34px system-ui, -apple-system, sans-serif";
+    ctx.fillText(recapData.templateName || "Session", 72, 270);
+
+    const stats = [
+      ["Total sets", String(recapData.totalSets)],
+      ["Exercises", String(recapData.exercises)],
+      ["Volume", `${Math.round(recapData.totalVolume).toLocaleString()}`],
+      ["Time", `${Math.round(recapData.totalTimeMin)} min`],
+      ["PRs", String(recapData.prCount)],
+    ];
+    ctx.font = "500 30px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = "#c9c9c9";
+    let y = 370;
+    for (const [label, value] of stats) {
+      ctx.fillText(label, 72, y);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(value, 420, y);
+      ctx.fillStyle = "#c9c9c9";
+      y += 64;
+    }
+
+    ctx.fillStyle = "rgba(255,122,24,0.6)";
+    ctx.fillRect(72, height - 210, width - 144, 4);
+    ctx.fillStyle = "#9a9a9a";
+    ctx.font = "400 26px system-ui, -apple-system, sans-serif";
+    ctx.fillText("Built with Forge Fitness", 72, height - 150);
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/png")
+    );
+    if (!blob) return;
+    const file = new File([blob], "forge-fitness-recap.png", { type: "image/png" });
+    const canShare =
+      typeof navigator !== "undefined" &&
+      "share" in navigator &&
+      (navigator as any).canShare?.({ files: [file] });
+    if (canShare) {
+      await (navigator as any).share({
+        title: "Forge Fitness recap",
+        text: "Workout recap",
+        files: [file],
+      });
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "forge-fitness-recap.png";
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const importData = (jsonText: string) => {
@@ -1602,11 +2747,19 @@ useEffect(() => {
         settings: {
           ...defaultState.settings,
           ...(parsed as any).settings,
-          role: ((parsed as any)?.settings?.role === "coach" ? "coach" : "athlete") as UserRole,
+          role: normalizeRole((parsed as any)?.settings?.role),
         },
         templates: Array.isArray((parsed as any).templates) ? (parsed as any).templates : defaultState.templates,
         sessions: Array.isArray((parsed as any).sessions) ? (parsed as any).sessions : [],
         goals: Array.isArray((parsed as any).goals) ? (parsed as any).goals : [],
+        weighIns: Array.isArray((parsed as any).weighIns) ? (parsed as any).weighIns : [],
+        savedSplits:
+          (parsed as any)?.savedSplits && typeof (parsed as any).savedSplits === "object"
+            ? (parsed as any).savedSplits
+            : defaultState.savedSplits,
+        achievements: Array.isArray((parsed as any).achievements)
+          ? (parsed as any).achievements
+          : defaultState.achievements,
       };
       setState(merged);
       setImportDialogOpen(false);
@@ -1688,6 +2841,41 @@ useEffect(() => {
     setSessionNotes("");
     setSearch("");
     setConfirmResetOpen(false);
+  };
+
+  const deleteAccount = async () => {
+    if (!supabase || !authUser) {
+      resetAll();
+      setConfirmDeleteAccountOpen(false);
+      return;
+    }
+    setDeleteAccountLoading(true);
+    try {
+      const userId = authUser.id;
+      await Promise.allSettled([
+        supabase.from("user_data").delete().eq("user_id", userId),
+        supabase.from("user_sessions").delete().eq("user_id", userId),
+        supabase.from("user_weighins").delete().eq("user_id", userId),
+        supabase.from("social_posts").delete().eq("actor_id", userId),
+        supabase.from("social_likes").delete().eq("user_id", userId),
+        supabase.from("social_comments").delete().eq("user_id", userId),
+        supabase.from("friend_requests").delete().or(`sender_id.eq.${userId},receiver_id.eq.${userId}`),
+        supabase.from("friendships").delete().or(`user_id.eq.${userId},friend_id.eq.${userId}`),
+        supabase.from("messages").delete().or(`sender_id.eq.${userId},recipient_id.eq.${userId}`),
+        supabase.from("workout_invites").delete().or(`sender_id.eq.${userId},recipient_id.eq.${userId}`),
+        supabase.from("challenge_participants").delete().eq("user_id", userId),
+        supabase.from("challenges").delete().eq("creator_id", userId),
+        supabase.from("coach_clients").delete().or(`coach_id.eq.${userId},athlete_id.eq.${userId}`),
+        supabase.from("coach_assignments").delete().or(`coach_id.eq.${userId},athlete_id.eq.${userId}`),
+        supabase.from("profiles").delete().eq("user_id", userId),
+      ]);
+    } catch {
+      // best-effort cleanup
+    }
+    await supabase.auth.signOut();
+    resetAll();
+    setConfirmDeleteAccountOpen(false);
+    setDeleteAccountLoading(false);
   };
 
   const selectedTemplate = useMemo(() => {
@@ -1840,10 +3028,117 @@ useEffect(() => {
     return { planned, completed, pct };
   }, [workingEntries]);
 
+  const todayKey = todayISO();
+  const todaysWeighIn = useMemo(
+    () => (state.weighIns || []).find((w) => w.dateISO === todayKey),
+    [state.weighIns, todayKey]
+  );
+  const formattedDate = useMemo(
+    () =>
+      new Date(todayKey).toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      }),
+    [todayKey]
+  );
+  const isBirthday = useMemo(() => {
+    const birthdate = state.settings.profile.birthdate;
+    if (!birthdate) return false;
+    const [, birthMonth, birthDay] = birthdate.split("-");
+    const [, todayMonth, todayDay] = todayKey.split("-");
+    return birthMonth === todayMonth && birthDay === todayDay;
+  }, [state.settings.profile.birthdate, todayKey]);
+  const birthdayAge = useMemo(() => {
+    const birthdate = state.settings.profile.birthdate;
+    if (!birthdate) return null;
+    const birth = new Date(birthdate);
+    if (Number.isNaN(birth.getTime())) return null;
+    const today = new Date(todayKey);
+    let age = today.getFullYear() - birth.getFullYear();
+    const birthdayThisYear = new Date(today.getFullYear(), birth.getMonth(), birth.getDate());
+    if (today < birthdayThisYear) age -= 1;
+    return age;
+  }, [state.settings.profile.birthdate, todayKey]);
+  useEffect(() => {
+    if (!isBirthday) setBirthdayClaimed(false);
+  }, [isBirthday]);
+  const recentWeighIns = useMemo(() => {
+    const sorted = [...(state.weighIns || [])].sort((a, b) =>
+      String(b.dateISO).localeCompare(String(a.dateISO))
+    );
+    return sorted.slice(0, 7);
+  }, [state.weighIns]);
+  const trend = useMemo(
+    () => calcTrend((state.weighIns || []).slice(0, 14)),
+    [state.weighIns]
+  );
+  const kcalPerUnit = state.settings.units === "kg" ? 7700 : 3500;
+  const kcalPerDay = trend ? -trend.slopePerDay * kcalPerUnit : 0;
+  const energyLabel = trend
+    ? Math.abs(kcalPerDay) < 50
+      ? "Holding steady"
+      : kcalPerDay > 0
+      ? `Est. deficit ${Math.round(kcalPerDay)} kcal/day`
+      : `Est. surplus ${Math.round(Math.abs(kcalPerDay))} kcal/day`
+    : "Log a few days to see your trend.";
+  const weighInRange =
+    state.settings.units === "kg"
+      ? { min: 30, max: 200, step: 0.1, tickEvery: 5 }
+      : { min: 70, max: 350, step: 0.1, tickEvery: 10 };
+  const weighInNumber = Number(weighInInput);
+  const weighInSliderValue = clamp(
+    Number.isFinite(weighInNumber) && weighInNumber > 0
+      ? weighInNumber
+      : todaysWeighIn?.weight ?? (state.settings.units === "kg" ? 80 : 180),
+    weighInRange.min,
+    weighInRange.max
+  );
+
+  const saveWeighIn = () => {
+    const value = Number(weighInInput);
+    if (!value || value <= 0) {
+      alert("Enter a valid weight.");
+      return;
+    }
+    setState((p) => {
+      const next = (p.weighIns || []).filter((w) => w.dateISO !== todayKey);
+      return { ...p, weighIns: [{ dateISO: todayKey, weight: value }, ...next] };
+    });
+    if (supabaseEnabled && authUser) {
+      supabase
+        .from("user_weighins")
+        .upsert(
+          {
+            user_id: authUser.id,
+            date_iso: todayKey,
+            weight: value,
+          },
+          { onConflict: "user_id,date_iso" }
+        )
+        .then(({ error }) => {
+          if (error) console.warn("Supabase weigh-in upsert error", error.message);
+        });
+    }
+    if (supabaseEnabled && authUser && supabase && state.settings.profile.shareWeighIns) {
+      supabase.from("social_posts").insert({
+        actor_id: authUser.id,
+        type: "weighin",
+        payload: { weight: value, dateISO: todayKey },
+      });
+    }
+    setWeighInInput("");
+    setWeighInEditing(false);
+  };
+
   useEffect(() => {
     if (!restRunning) return;
     if (restSeconds <= 0) {
       setRestRunning(false);
+      setRestTargetSec(0);
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        navigator.vibrate(200);
+      }
       return;
     }
     const id = window.setInterval(() => {
@@ -1857,7 +3152,7 @@ useEffect(() => {
     [mainEntries]
   );
 
-  const gymSteps = useMemo(() => {
+  const mainGymSteps = useMemo(() => {
     const steps: Array<{ exerciseId: string; setIndex: number }> = [];
 
     const addSingle = (entry: WorkingEntry) => {
@@ -1882,17 +3177,52 @@ useEffect(() => {
       addSingle(group.entries[0]);
     });
 
+    return steps;
+  }, [groupedMainEntries]);
+
+  const finisherGymSteps = useMemo(() => {
+    const steps: Array<{ exerciseId: string; setIndex: number }> = [];
+    const addSingle = (entry: WorkingEntry) => {
+      const count = Math.max(entry.sets.length, 1);
+      for (let i = 0; i < count; i += 1) {
+        steps.push({ exerciseId: entry.exerciseId, setIndex: i });
+      }
+    };
     finisherEntries.forEach((entry) => addSingle(entry));
     return steps;
-  }, [groupedMainEntries, finisherEntries]);
+  }, [finisherEntries]);
+
+  const gymSteps = useMemo(() => {
+    if (includeFinishers) return [...mainGymSteps, ...finisherGymSteps];
+    return mainGymSteps;
+  }, [includeFinishers, mainGymSteps, finisherGymSteps]);
+
+  const advanceGymStep = useCallback(() => {
+    const nextIndex = gymStepIndex + 1;
+    if (
+      includeFinishers === null &&
+      finisherGymSteps.length > 0 &&
+      nextIndex >= mainGymSteps.length
+    ) {
+      setFinisherPromptOpen(true);
+      return;
+    }
+    setGymStepIndex((i) => Math.min(Math.max(gymSteps.length - 1, 0), i + 1));
+  }, [
+    gymStepIndex,
+    includeFinishers,
+    finisherGymSteps.length,
+    mainGymSteps.length,
+    gymSteps.length,
+  ]);
 
   useEffect(() => {
     if (restRunning) return;
     if (restSeconds !== 0) return;
     if (!autoAdvanceAfterRest) return;
     setAutoAdvanceAfterRest(false);
-    setGymStepIndex((i) => Math.min(Math.max(gymSteps.length - 1, 0), i + 1));
-  }, [autoAdvanceAfterRest, gymSteps.length, restRunning, restSeconds]);
+    advanceGymStep();
+  }, [autoAdvanceAfterRest, advanceGymStep, restRunning, restSeconds]);
 
   useEffect(() => {
     if (!gymMode) return;
@@ -1901,15 +3231,170 @@ useEffect(() => {
     }
   }, [gymMode, gymStepIndex, gymSteps.length]);
 
+  useEffect(() => {
+    if (gymMode) return;
+    setIncludeFinishers(null);
+    setFinisherPromptOpen(false);
+  }, [gymMode]);
+
   const scheduleInfo = useMemo(
     () => getScheduleInfo(sessionDate, state.templates || [], state.settings.schedule),
     [sessionDate, state.templates, state.settings.schedule]
   );
 
+  const triggerHaptic = (pattern: number | number[]) => {
+    if (typeof navigator === "undefined") return;
+    if ("vibrate" in navigator) navigator.vibrate(pattern);
+  };
+  const dashboardTemplate = useMemo(() => {
+    if (scheduleInfo.isRestDay) return undefined;
+    if (scheduleInfo.templateId) {
+      return state.templates.find((t) => t.id === scheduleInfo.templateId);
+    }
+    return selectedTemplate;
+  }, [scheduleInfo.isRestDay, scheduleInfo.templateId, selectedTemplate, state.templates]);
+
   const scheduledDayOptions = useMemo(() => {
     const schedule = state.settings.schedule || emptySchedule;
     return WEEKDAYS.filter((day) => Boolean(schedule[day.key]));
   }, [state.settings.schedule]);
+
+  const updateProfile = useCallback((partial: Partial<Profile>) => {
+    setState((p) => {
+    const nextProfile = { ...p.settings.profile, ...partial };
+    const completed =
+      nextProfile.completed ||
+      (!!nextProfile.name.trim() &&
+        Number(nextProfile.age) > 0 &&
+        Number(nextProfile.height) > 0 &&
+        Number(nextProfile.weight) > 0 &&
+        !!nextProfile.birthdate &&
+        !!nextProfile.gender);
+      return {
+        ...p,
+        settings: { ...p.settings, profile: { ...nextProfile, completed } },
+      };
+    });
+  }, []);
+
+  const formatSplitLabel = (splitKey: string) => {
+    if (splitKey.startsWith("custom|")) {
+      const [, name] = splitKey.split("|");
+      return name ? `Custom • ${name}` : "Custom split";
+    }
+    const [split, focus, experience, days, style, deload] = splitKey.split("|");
+    const splitLabels: Record<string, string> = {
+      full_body: "Full Body",
+      upper_lower: "Upper/Lower",
+      ppl: "Push Pull Legs",
+      phul: "PHUL",
+      bro_split: "Bro Split",
+      custom: "Custom",
+    };
+    const focusLabels: Record<string, string> = {
+      hypertrophy: "Hypertrophy",
+      strength: "Strength",
+      fat_loss: "Weight Loss",
+      athletic: "Athletic",
+      general: "General",
+    };
+    const expLabel = experience ? experience.replace(/_/g, " ") : "All levels";
+    const styleLabel =
+      style === "glute" ? "Glute focus" : style === "mass" ? "Mass focus" : "Balanced";
+    const splitLabel = splitLabels[split] || split;
+    const focusLabel = focusLabels[focus] || focus;
+    const deloadLabel = deload === "deload" ? "Deload" : "Standard";
+    return `${splitLabel} • ${focusLabel} • ${expLabel} • ${days} days • ${styleLabel} • ${deloadLabel}`;
+  };
+
+  const socialPostSummary = (post: { type: string; payload: any }) => {
+    if (post.type === "workout") {
+      const name = post.payload?.templateName || "a workout";
+      const sets = post.payload?.totalSets || 0;
+      const volume = post.payload?.totalVolume || 0;
+      return {
+        title: `Logged ${name}`,
+        meta: sets ? `${sets} sets • ${Math.round(volume).toLocaleString()} volume` : "Session completed",
+      };
+    }
+    if (post.type === "pr") {
+      const count = post.payload?.prCount || 1;
+      return {
+        title: `Hit ${count} PR${count === 1 ? "" : "s"}`,
+        meta: "New personal bests unlocked",
+      };
+    }
+    if (post.type === "weighin") {
+      const weight = post.payload?.weight;
+      return {
+        title: "Weigh-in logged",
+        meta: weight ? `${weight} ${state.settings.units}` : "Daily check-in",
+      };
+    }
+    if (post.type === "streak") {
+      const streak = post.payload?.streak || 0;
+      return {
+        title: `${streak}-day streak`,
+        meta: "Consistency win",
+      };
+    }
+    return { title: "Shared an update", meta: "Community post" };
+  };
+
+  const toggleLike = useCallback(
+    async (postId: string) => {
+      if (!supabase || !authUser) return;
+      if (postLikes[postId]?.liked) {
+        await supabase.from("social_likes").delete().eq("post_id", postId).eq("user_id", authUser.id);
+        setPostLikes((prev) => ({
+          ...prev,
+          [postId]: {
+            count: Math.max((prev[postId]?.count || 1) - 1, 0),
+            liked: false,
+          },
+        }));
+      } else {
+        await supabase.from("social_likes").insert({ post_id: postId, user_id: authUser.id });
+        setPostLikes((prev) => ({
+          ...prev,
+          [postId]: {
+            count: (prev[postId]?.count || 0) + 1,
+            liked: true,
+          },
+        }));
+      }
+    },
+    [authUser, postLikes, supabase]
+  );
+
+  const addComment = useCallback(
+    async (postId: string) => {
+      if (!supabase || !authUser) return;
+      const body = (commentDrafts[postId] || "").trim();
+      if (!body) return;
+      const res = await supabase
+        .from("social_comments")
+        .insert({ post_id: postId, user_id: authUser.id, body })
+        .select("id, body, created_at, author:profiles(username)")
+        .single();
+      if (!res.error && res.data) {
+        setPostComments((prev) => ({
+          ...prev,
+          [postId]: [
+            {
+              id: res.data.id,
+              author: res.data.author?.username || "You",
+              body: res.data.body,
+              createdAt: res.data.created_at,
+            },
+            ...(prev[postId] || []),
+          ],
+        }));
+        setCommentDrafts((prev) => ({ ...prev, [postId]: "" }));
+      }
+    },
+    [authUser, commentDrafts, supabase]
+  );
 
   const scheduledDayLabel = (key: Weekday) => {
     const schedule = state.settings.schedule || emptySchedule;
@@ -1919,10 +3404,48 @@ useEffect(() => {
     return match ? `${key.toUpperCase()} • ${match.name}` : key.toUpperCase();
   };
 
+  const setScheduleDay = (day: Weekday, value: string) => {
+    setState((prev) => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        schedule: {
+          ...(prev.settings.schedule || emptySchedule),
+          [day]: value,
+        },
+      },
+    }));
+  };
+
+  const swapScheduleDays = (from: Weekday, to: Weekday) => {
+    if (from === to) return;
+    setState((prev) => {
+      const schedule = { ...(prev.settings.schedule || emptySchedule) };
+      const fromValue = schedule[from];
+      schedule[from] = schedule[to];
+      schedule[to] = fromValue;
+      return {
+        ...prev,
+        settings: {
+          ...prev.settings,
+          schedule,
+        },
+      };
+    });
+  };
+
+  const toggleRestDay = (day: Weekday) => {
+    const schedule = state.settings.schedule || emptySchedule;
+    const current = schedule[day];
+    setScheduleDay(day, current === "rest" ? "" : "rest");
+  };
+
   const currentGymStep = gymSteps[gymStepIndex];
   const currentGymEntry = currentGymStep
     ? workingEntries.find((e) => e.exerciseId === currentGymStep.exerciseId)
     : undefined;
+  const effectiveRestSec =
+    restPresetSec || currentGymEntry?.templateHint?.restSec || 0;
   const currentGymSet =
     currentGymEntry && currentGymStep
       ? currentGymEntry.sets[currentGymStep.setIndex] || {
@@ -1932,6 +3455,24 @@ useEffect(() => {
           notes: "",
         }
       : undefined;
+  const suggestionForCurrent = currentGymEntry
+    ? insights.suggestions?.[currentGymEntry.exerciseName]?.next || null
+    : null;
+  const swapOptions = currentGymEntry
+    ? getSimilarExercises(currentGymEntry.exerciseName).filter(
+        (ex) => ex.name.toLowerCase() !== currentGymEntry.exerciseName.toLowerCase()
+      )
+    : [];
+  const warmupSets = useMemo(() => {
+    if (!currentGymEntry) return [];
+    const currentWeight = Number(currentGymSet?.weight) || 0;
+    const historyTop = exerciseHistory[currentGymEntry.exerciseName]?.[0]?.topSet?.weight || 0;
+    const base = currentWeight || historyTop;
+    if (!base || base < 40) return [];
+    const step = currentGymEntry.templateHint?.weightStep || getWeightSliderConfig(state.settings.units).step;
+    const round = (v: number) => Math.round(v / step) * step;
+    return [0.4, 0.6, 0.8].map((pct) => round(base * pct));
+  }, [currentGymEntry, currentGymSet?.weight, exerciseHistory, state.settings.units]);
 
   const updateGymSet = (patch: Partial<WorkingEntry["sets"][number]>) => {
     if (!currentGymEntry || !currentGymStep) return;
@@ -1956,6 +3497,58 @@ useEffect(() => {
         return { ...entry, sets: nextSets };
       })
     );
+  };
+
+  const adjustGymWeight = (delta: number) => {
+    const step =
+      currentGymEntry?.templateHint?.weightStep || getWeightSliderConfig(state.settings.units).step;
+    const current = Number(currentGymSet?.weight) || 0;
+    const next = Math.max(0, roundTo(current + delta, step));
+    updateGymSet({ weight: String(next) });
+  };
+
+  const handleSwapExercise = (nextEx: Omit<TemplateExercise, "id">) => {
+    if (!currentGymEntry) return;
+    const preserve = currentGymEntry.templateHint || {
+      setType: "normal" as SetType,
+      supersetTag: "",
+    };
+    setWorkingEntries((prev) =>
+      prev.map((entry) =>
+        entry.exerciseId === currentGymEntry.exerciseId
+          ? {
+              ...entry,
+              exerciseName: nextEx.name,
+              templateHint: {
+                defaultSets: nextEx.defaultSets,
+                repRange: nextEx.repRange,
+                restSec: nextEx.restSec,
+                weightStep: nextEx.weightStep,
+                autoProgress: nextEx.autoProgress,
+                timeUnit: nextEx.timeUnit,
+                setType: preserve.setType,
+                supersetTag: preserve.supersetTag,
+              },
+            }
+          : entry
+      )
+    );
+    if (logMode === "template") {
+      setState((p) => ({
+        ...p,
+        templates: (p.templates || []).map((t) =>
+          t.id === selectedTemplateId
+            ? {
+                ...t,
+                exercises: (t.exercises || []).map((ex) =>
+                  ex.id === currentGymEntry.exerciseId ? { ...ex, ...nextEx, id: ex.id } : ex
+                ),
+              }
+            : t
+        ),
+      }));
+    }
+    setSwapOpen(false);
   };
 
   const addGymSet = () => {
@@ -2003,6 +3596,50 @@ useEffect(() => {
       })
     );
   };
+
+  const startWorkout = () => {
+    const templateToStart = dashboardTemplate;
+    if (!templateToStart) {
+      alert("Select a workout first.");
+      return;
+    }
+    if (selectedTemplateId !== templateToStart.id) {
+      setSelectedTemplateId(templateToStart.id);
+    }
+    setWorkingEntries(
+      buildEntriesFromTemplate(templateToStart, { suggestions: insights.suggestions })
+    );
+    setLogMode("template");
+    setGymMode(true);
+    setGymStepIndex(0);
+    setIncludeFinishers(null);
+    setFinisherPromptOpen(false);
+    setRestRunning(false);
+    setRestSeconds(0);
+    setRestTargetSec(0);
+    setTotalRestSec(0);
+    setRestCount(0);
+    setSessionStartTs(Date.now());
+    setSessionElapsedSec(0);
+    setAutoAdvanceAfterRest(false);
+  };
+
+  const avgRestSec = restCount ? Math.round(totalRestSec / restCount) : 0;
+  const prCelebration = showPRCelebration ? (
+    <div className="pointer-events-none fixed inset-0 z-[120] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/70" />
+      <div className="relative mx-auto flex max-w-sm flex-col items-center gap-3 rounded-3xl border border-primary/40 bg-card/90 px-6 py-8 text-center shadow-[0_25px_60px_rgba(0,0,0,0.4)]">
+        <div className="absolute -top-8 h-16 w-16 rounded-full bg-primary/20 blur-2xl" />
+        <Trophy className="h-10 w-10 text-primary" />
+        <div className="text-2xl font-display uppercase tracking-[0.2em] text-primary">
+          New PR!
+        </div>
+        <div className="text-sm text-muted-foreground">
+          You just leveled up. Keep that momentum going.
+        </div>
+      </div>
+    </div>
+  ) : null;
 
 const headerStats = useMemo(() => {
   const sessions = [...state.sessions].sort(
@@ -2060,6 +3697,38 @@ const headerStats = useMemo(() => {
   };
 }, [state.sessions]);
 
+  useEffect(() => {
+    if (!gymMode || !sessionStartTs) return;
+    const id = window.setInterval(() => {
+      setSessionElapsedSec(Math.max(0, Math.round((Date.now() - sessionStartTs) / 1000)));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [gymMode, sessionStartTs]);
+
+  useEffect(() => {
+    if (!showPRCelebration) return;
+    const id = window.setTimeout(() => setShowPRCelebration(false), 2600);
+    return () => window.clearTimeout(id);
+  }, [showPRCelebration]);
+
+  const achievementsById = useMemo(
+    () => new Map((state.achievements || []).map((a) => [a.id, a.unlockedAt])),
+    [state.achievements]
+  );
+  const achievementsList = useMemo(
+    () =>
+      ACHIEVEMENTS.map((a) => ({
+        ...a,
+        unlockedAt: achievementsById.get(a.id),
+      })),
+    [achievementsById]
+  );
+  const unlockedCount = achievementsList.filter((a) => a.unlockedAt).length;
+  const latestAchievement = achievementsList
+    .filter((a) => a.unlockedAt)
+    .sort((a, b) => String(b.unlockedAt).localeCompare(String(a.unlockedAt)))[0];
+
+
 
 
   useEffect(() => {
@@ -2090,6 +3759,203 @@ const headerStats = useMemo(() => {
     }
   }, [state]);
 
+  useEffect(() => {
+    if (!supabaseEnabled) return;
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthUser(data.session?.user ?? null);
+      setAuthReady(true);
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUser(session?.user ?? null);
+      setAuthReady(true);
+    });
+    return () => {
+      data.subscription?.unsubscribe();
+    };
+  }, [supabaseEnabled]);
+
+  useEffect(() => {
+    if (!supabaseEnabled || !authUser || !supabase) return;
+    const email = authUser.email || "";
+    supabase
+      .from("profiles")
+      .upsert(
+        {
+          user_id: authUser.id,
+          email,
+          role: state.settings.role === "coach" ? "coach" : "athlete",
+          username: state.settings.profile.username || null,
+          share_settings: {
+            workouts: !!state.settings.profile.shareWorkouts,
+            prs: !!state.settings.profile.sharePRs,
+            weigh_ins: !!state.settings.profile.shareWeighIns,
+            trophies: !!state.settings.profile.shareTrophies,
+            goals: !!state.settings.profile.shareGoals,
+            streaks: !!state.settings.profile.shareStreaks,
+          },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      )
+      .then(({ error }) => {
+        if (error) console.warn("Supabase profile error", error.message);
+      });
+  }, [
+    supabaseEnabled,
+    authUser,
+    state.settings.role,
+    state.settings.profile.username,
+    state.settings.profile.shareWorkouts,
+    state.settings.profile.sharePRs,
+    state.settings.profile.shareWeighIns,
+    state.settings.profile.shareTrophies,
+    state.settings.profile.shareGoals,
+    state.settings.profile.shareStreaks,
+  ]);
+
+  useEffect(() => {
+    if (!supabaseEnabled || !authUser) {
+      setRemoteLoaded(false);
+      return;
+    }
+    if (!supabase) return;
+    let canceled = false;
+    const loadRemote = async () => {
+      const [stateRes, sessionsRes, weighRes] = await Promise.all([
+        supabase.from("user_data").select("state").eq("user_id", authUser.id).single(),
+        supabase.from("user_sessions").select("session").eq("user_id", authUser.id),
+        supabase.from("user_weighins").select("date_iso, weight").eq("user_id", authUser.id),
+      ]);
+      if (canceled) return;
+      const remoteState = stateRes.data?.state as AppState | undefined;
+      const remoteSessions = (sessionsRes.data || []).map((row: any) => row.session as Session);
+      const remoteWeighIns = (weighRes.data || []).map((row: any) => ({
+        dateISO: row.date_iso,
+        weight: Number(row.weight),
+      }));
+
+      const combinedRemote = remoteState
+        ? {
+            ...remoteState,
+            sessions: remoteSessions.length ? remoteSessions : remoteState.sessions,
+            weighIns: remoteWeighIns.length ? remoteWeighIns : remoteState.weighIns,
+          }
+        : undefined;
+
+      if (combinedRemote && typeof combinedRemote === "object") {
+        const localSnapshot = stateRef.current || state;
+        if (!isStateEmpty(localSnapshot) && !isStateEmpty(combinedRemote)) {
+          const merged = mergeStates(localSnapshot, combinedRemote);
+          const mergedWithRemoteProfile = {
+            ...merged,
+            settings: {
+              ...merged.settings,
+              profile: {
+                ...merged.settings.profile,
+                ...(combinedRemote.settings?.profile || {}),
+              },
+            },
+          };
+          setState(mergedWithRemoteProfile);
+          setRemoteLoaded(true);
+          return;
+        }
+        setState((prev) => ({
+          ...prev,
+          ...combinedRemote,
+          settings: {
+            ...prev.settings,
+            ...(combinedRemote.settings || {}),
+            profile: {
+              ...prev.settings.profile,
+              ...(combinedRemote.settings?.profile || {}),
+            },
+          },
+        }));
+      }
+
+      if (stateRes.error && stateRes.error.code !== "PGRST116") {
+        console.warn("Supabase load error", stateRes.error.message);
+      }
+      if (sessionsRes.error) console.warn("Supabase sessions error", sessionsRes.error.message);
+      if (weighRes.error) console.warn("Supabase weighins error", weighRes.error.message);
+
+      setRemoteLoaded(true);
+    };
+    loadRemote();
+    return () => {
+      canceled = true;
+    };
+  }, [supabaseEnabled, authUser]);
+
+  useEffect(() => {
+    if (!supabaseEnabled || !authUser || !remoteLoaded) return;
+    const id = window.setTimeout(() => {
+      supabase
+        .from("user_data")
+        .upsert(
+          {
+            user_id: authUser.id,
+            state,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        )
+        .then(({ error }) => {
+          if (error) console.warn("Supabase save error", error.message);
+        });
+    }, 800);
+    return () => window.clearTimeout(id);
+  }, [supabaseEnabled, authUser, remoteLoaded, state]);
+
+  const syncNow = async (nextState?: AppState) => {
+    if (!supabaseEnabled || !authUser || !supabase) return;
+    const payload = nextState || stateRef.current || state;
+    setSyncStatus("syncing");
+    setSyncError("");
+    const [stateRes, sessionsRes, weighRes] = await Promise.all([
+      supabase.from("user_data").upsert(
+        {
+          user_id: authUser.id,
+          state: payload,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      ),
+      supabase.from("user_sessions").upsert(
+        (payload.sessions || []).map((s) => ({
+          user_id: authUser.id,
+          session_id: s.id,
+          session: s,
+          created_at: s.dateISO,
+        })),
+        { onConflict: "session_id" }
+      ),
+      supabase.from("user_weighins").upsert(
+        (payload.weighIns || []).map((w) => ({
+          user_id: authUser.id,
+          date_iso: w.dateISO,
+          weight: w.weight,
+        })),
+        { onConflict: "user_id,date_iso" }
+      ),
+    ]);
+
+    if (stateRes.error || sessionsRes.error || weighRes.error) {
+      setSyncStatus("error");
+      setSyncError(
+        stateRes.error?.message ||
+          sessionsRes.error?.message ||
+          weighRes.error?.message ||
+          "Sync failed"
+      );
+      return;
+    }
+    setSyncStatus("success");
+    setLastSyncAt(new Date().toISOString());
+    window.setTimeout(() => setSyncStatus("idle"), 1200);
+  };
+
   if (!mounted) {
     return <div className="min-h-screen w-full bg-background" />;
   }
@@ -2110,24 +3976,652 @@ const headerStats = useMemo(() => {
     );
   }
 
+  if (supabaseEnabled && !authReady) {
+    return (
+      <div className="min-h-screen w-full bg-background text-foreground flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">Loading account...</div>
+      </div>
+    );
+  }
+
+  if (supabaseEnabled && !authUser) {
+    return (
+      <AuthScreen
+        mode={authMode}
+        email={authEmail}
+        password={authPassword}
+        error={authError}
+        loading={authLoading}
+        googleLoading={googleLoading}
+        onModeChange={setAuthMode}
+        onEmailChange={setAuthEmail}
+        onPasswordChange={setAuthPassword}
+        onSubmit={async () => {
+          if (!supabase) return;
+          setAuthError("");
+          setAuthLoading(true);
+          const payload = { email: authEmail.trim(), password: authPassword };
+          const { error } =
+            authMode === "signup"
+              ? await supabase.auth.signUp({
+                  ...payload,
+                  options: {
+                    emailRedirectTo:
+                      typeof window === "undefined" ? undefined : window.location.origin,
+                  },
+                })
+              : await supabase.auth.signInWithPassword(payload);
+          if (error) {
+            setAuthError(error.message);
+          } else if (authMode === "signup") {
+            setAuthError("Check your email to confirm your account.");
+          }
+          setAuthLoading(false);
+        }}
+        onGoogle={async () => {
+          if (!supabase) return;
+          setAuthError("");
+          setGoogleLoading(true);
+          const { error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: {
+              redirectTo:
+                typeof window === "undefined" ? undefined : window.location.origin,
+            },
+          });
+          if (error) {
+            setAuthError(error.message);
+            setGoogleLoading(false);
+          }
+        }}
+      />
+    );
+  }
+
+  if (pendingRemote) {
+    return (
+      <div className="min-h-screen w-full bg-background text-foreground flex items-center justify-center px-4">
+        <Card className="w-full max-w-md rounded-3xl">
+          <CardHeader>
+            <CardTitle>Sync your data</CardTitle>
+            <CardDescription>
+              We found data on this device and in the cloud. Choose how to proceed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="rounded-xl border p-3">
+              <div className="font-medium">Local data</div>
+              <div className="text-xs text-muted-foreground">
+                Templates: {(stateRef.current?.templates || []).length} • Sessions:{" "}
+                {(stateRef.current?.sessions || []).length}
+              </div>
+            </div>
+            <div className="rounded-xl border p-3">
+              <div className="font-medium">Cloud data</div>
+              <div className="text-xs text-muted-foreground">
+                Templates: {(pendingRemote.templates || []).length} • Sessions:{" "}
+                {(pendingRemote.sessions || []).length}
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button
+                className="rounded-xl"
+                onClick={async () => {
+                  const localSnap = stateRef.current || state;
+                  setPendingRemote(null);
+                  setRemoteLoaded(true);
+                  await syncNow(localSnap);
+                }}
+              >
+                Keep local
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                onClick={async () => {
+                  setState(pendingRemote);
+                  setPendingRemote(null);
+                  setRemoteLoaded(true);
+                }}
+              >
+                Use cloud
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                onClick={async () => {
+                  const localSnap = stateRef.current || state;
+                  const merged = mergeStates(localSnap, pendingRemote);
+                  setState(merged);
+                  setPendingRemote(null);
+                  setRemoteLoaded(true);
+                  await syncNow(merged);
+                }}
+              >
+                Merge
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (needsOnboarding) {
     return (
       <OnboardingScreen
         settings={state.settings}
-        onComplete={(profile, templates, days) => {
+        onComplete={(profile, templates, days, meta, role) => {
+          replaceProgramTemplates(templates, days, meta.splitKey, meta.source);
           setState((p) => ({
             ...p,
-            templates,
             settings: {
               ...p.settings,
+              role,
               profile,
-              schedule: assignScheduleDays(emptySchedule, templates, days),
             },
           }));
-          setSelectedTemplateId(templates[0]?.id || "");
-          setActiveTab("log");
+          if (supabaseEnabled && authUser) {
+            syncNow({
+              ...state,
+              settings: { ...state.settings, role, profile },
+            });
+          }
+          setActiveTab("dashboard");
         }}
       />
+    );
+  }
+
+  if (gymMode) {
+    const workoutName = selectedTemplate?.name || "Workout Session";
+    const nextGymStep = gymSteps[gymStepIndex + 1];
+    const nextGymEntry = nextGymStep
+      ? workingEntries.find((e) => e.exerciseId === nextGymStep.exerciseId)
+      : undefined;
+    const sessionProgressPct = Math.round(
+      ((gymStepIndex + 1) / Math.max(gymSteps.length, 1)) * 100
+    );
+    return (
+      <div className="min-h-screen h-screen w-full bg-background text-foreground overflow-hidden">
+        <div className="pointer-events-none fixed inset-0 -z-10">
+          <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_0%_0%,var(--glow-a),transparent)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(70%_55%_at_90%_10%,var(--glow-b),transparent)]" />
+          <div
+            className="absolute inset-0 mix-blend-soft-light"
+            style={{
+              opacity: "var(--pattern-opacity)",
+              backgroundImage: "var(--pattern-image)",
+              backgroundSize: "var(--pattern-size)",
+            }}
+          />
+        </div>
+
+        <div className="relative z-10 mx-auto flex h-full max-w-md flex-col px-4 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                Workout Mode
+              </div>
+              <div className="text-2xl font-display uppercase leading-tight">{workoutName}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => {
+                  setGymMode(false);
+                  setRestRunning(false);
+                  setRestSeconds(0);
+                  setRestTargetSec(0);
+                  setAutoAdvanceAfterRest(false);
+                  setSessionStartTs(null);
+                  setSessionElapsedSec(0);
+                  setTotalRestSec(0);
+                  setRestCount(0);
+                }}
+              >
+                Exit
+              </Button>
+              <Button size="sm" className="rounded-xl" onClick={saveSession}>
+                Save
+              </Button>
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              <span>Session progress</span>
+              <span>{sessionProgressPct}%</span>
+            </div>
+            <div className="mt-1 h-2 rounded-full bg-muted/60">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{ width: `${sessionProgressPct}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>Elapsed {formatMMSS(sessionElapsedSec)}</span>
+              <span>
+                Avg rest {avgRestSec ? formatMMSS(avgRestSec) : "—"}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-4 flex-1 min-h-0 flex flex-col gap-2">
+            <div className="rounded-2xl border border-primary/40 bg-gradient-to-br from-primary/10 via-card/80 to-card/60 p-3 shadow-[0_14px_30px_rgba(0,0,0,0.22)]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                    Current set
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <div className="text-2xl font-display uppercase">
+                      {currentGymEntry?.exerciseName || "Pick a workout"}
+                    </div>
+                    {currentGymEntry?.templateHint?.defaultSets ? (
+                      <Badge
+                        variant="secondary"
+                        className="rounded-full px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.2em]"
+                      >
+                        Set {Math.min((currentGymStep?.setIndex ?? 0) + 1, currentGymEntry.templateHint.defaultSets)}/
+                        {currentGymEntry.templateHint.defaultSets}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  {currentGymEntry?.templateHint ? (
+                    <div className="text-sm text-muted-foreground mt-1">
+                      Target {formatRepRange(currentGymEntry.templateHint.repRange)}{" "}
+                      {currentGymEntry.templateHint.timeUnit === "seconds"
+                        ? "sec"
+                        : currentGymEntry.templateHint.timeUnit === "minutes"
+                        ? "min"
+                        : "reps"}{" "}
+                      • Rest {formatMMSS(effectiveRestSec)}
+                    </div>
+                  ) : null}
+                  {suggestionForCurrent ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>
+                        Suggested: {suggestionForCurrent.weight}{" "}
+                        {state.settings.units} × {suggestionForCurrent.reps}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 rounded-lg px-2 text-[11px]"
+                        onClick={() =>
+                          updateGymSet({
+                            weight: String(suggestionForCurrent.weight),
+                            reps: String(suggestionForCurrent.reps),
+                          })
+                        }
+                      >
+                        Use
+                      </Button>
+                    </div>
+                  ) : null}
+                  {nextGymEntry ? (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Up next: {nextGymEntry.exerciseName} • Set{" "}
+                      {Math.min((nextGymStep?.setIndex ?? 0) + 1, nextGymEntry.templateHint?.defaultSets || 1)}/
+                      {nextGymEntry.templateHint?.defaultSets || 1}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex flex-col items-end gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  <span>
+                    Set {gymStepIndex + 1}/{Math.max(gymSteps.length, 1)}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl h-7 px-2 text-[11px] normal-case"
+                    onClick={() => setSwapOpen(true)}
+                    disabled={!currentGymEntry}
+                  >
+                    Swap
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl h-7 px-2 text-[11px] normal-case"
+                    onClick={async () => {
+                      if (!supabase || !authUser) return;
+                      if (!selectedTemplate) return;
+                      if (!friends.length) {
+                        alert("Add a friend first.");
+                        return;
+                      }
+                      const friend = friends[0];
+                      await supabase.from("workout_invites").insert({
+                        sender_id: authUser.id,
+                        recipient_id: friend.userId,
+                        template_id: selectedTemplate.id,
+                        template_name: selectedTemplate.name,
+                        template: selectedTemplate,
+                        status: "pending",
+                      });
+                      alert(`Invite sent to @${friend.username}.`);
+                    }}
+                  >
+                    Invite
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {restRunning ? (
+              <div className="rounded-2xl border border-foreground/20 bg-card/80 p-3 shadow-[0_12px_26px_rgba(0,0,0,0.2)]">
+                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  Rest timer
+                </div>
+                <div className="mt-2 text-4xl font-display">
+                  {String(Math.floor(restSeconds / 60)).padStart(2, "0")}:
+                  {String(restSeconds % 60).padStart(2, "0")}
+                </div>
+                <div className="mt-2 h-2 rounded-full bg-muted/60">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{
+                      width: `${restTargetSec ? Math.max(0, Math.min(100, ((restTargetSec - restSeconds) / restTargetSec) * 100)) : 0}%`,
+                    }}
+                  />
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => {
+                      const delta = Math.min(15, restSeconds);
+                      const next = Math.max(0, restSeconds - delta);
+                      setRestSeconds(next);
+                      setRestTargetSec(Math.max(restTargetSec - delta, 0));
+                      setTotalRestSec((v) => Math.max(0, v - delta));
+                    }}
+                  >
+                    -15s
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="rounded-xl"
+                    onClick={() => setRestRunning((v) => !v)}
+                  >
+                    {restRunning ? "Pause" : "Start"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => {
+                      setRestSeconds(restSeconds + 15);
+                      setRestTargetSec(restTargetSec + 15);
+                      setTotalRestSec((v) => v + 15);
+                    }}
+                  >
+                    +15s
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => {
+                      setRestRunning(false);
+                      setTotalRestSec((v) => Math.max(0, v - restSeconds));
+                      setRestSeconds(0);
+                      setRestTargetSec(0);
+                      setAutoAdvanceAfterRest(false);
+                    }}
+                  >
+                    Skip rest
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-foreground/15 bg-card/80 p-3 space-y-2">
+                {warmupSets.length ? (
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span>Warm-up</span>
+                    {warmupSets.map((w) => (
+                      <Button
+                        key={w}
+                        size="sm"
+                        variant="outline"
+                        className="rounded-lg h-6 px-2 text-[11px]"
+                        onClick={() => updateGymSet({ weight: String(w) })}
+                      >
+                        {w} {state.settings.units}
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
+                {currentGymEntry?.templateHint?.timeUnit ? null : (
+                  <BigWeightSlider
+                    value={currentGymSet?.weight || ""}
+                    units={state.settings.units}
+                    onChange={(v) => updateGymSet({ weight: v })}
+                  />
+                )}
+                {currentGymEntry?.templateHint?.timeUnit ? null : (
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span>Quick add</span>
+                    {(state.settings.units === "lb"
+                      ? [2.5, 5, 10, 25, 45]
+                      : [1, 2.5, 5, 10, 20]
+                    ).map((inc) => (
+                      <Button
+                        key={`plus-${inc}`}
+                        size="sm"
+                        variant="outline"
+                        className="rounded-lg h-6 px-2 text-[11px]"
+                        onClick={() => adjustGymWeight(inc)}
+                      >
+                        +{inc}
+                      </Button>
+                    ))}
+                    <span className="ml-1">Quick drop</span>
+                    {[5, 10].map((dec) => (
+                      <Button
+                        key={`minus-${dec}`}
+                        size="sm"
+                        variant="outline"
+                        className="rounded-lg h-6 px-2 text-[11px]"
+                        onClick={() => adjustGymWeight(-dec)}
+                      >
+                        -{dec}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+                {currentGymEntry?.templateHint?.timeUnit ? null : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <BigMetricSlider
+                      label="Reps"
+                      value={currentGymSet?.reps || ""}
+                      onChange={(v) => updateGymSet({ reps: v })}
+                      min={1}
+                      max={30}
+                      step={1}
+                      tickEvery={1}
+                      tickOffset={10}
+                    />
+                    <BigMetricSlider
+                      label="RPE"
+                      value={currentGymSet?.rpe || ""}
+                      onChange={(v) => updateGymSet({ rpe: v })}
+                      min={6}
+                      max={10}
+                      step={0.5}
+                      tickEvery={0.5}
+                      tickOffset={4}
+                    />
+                  </div>
+                )}
+                <div className="text-[11px] text-muted-foreground">
+                  RPE = effort scale. 10 = max, 8 = ~2 reps left.
+                </div>
+                {showGymNotes ? (
+                  <div className="space-y-1">
+                    <Label>Notes</Label>
+                    <Input
+                      value={currentGymSet?.notes || ""}
+                      onChange={(e) => updateGymSet({ notes: e.target.value })}
+                      placeholder="Quick note..."
+                    />
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                  <span>Rest preset</span>
+                  {[60, 90, 120, 150].map((sec) => (
+                    <Button
+                      key={sec}
+                      size="sm"
+                      variant={restPresetSec === sec ? "secondary" : "outline"}
+                      className="rounded-lg h-6 px-1.5 text-[11px]"
+                      onClick={() => setRestPresetSec(sec)}
+                    >
+                      {Math.floor(sec / 60)}:{String(sec % 60).padStart(2, "0")}
+                    </Button>
+                  ))}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-lg h-6 px-2 text-[11px]"
+                    onClick={() => {
+                      const v = currentGymEntry?.templateHint?.restSec ?? 90;
+                      setRestPresetSec(v);
+                    }}
+                  >
+                    Use target
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-lg h-6 px-2 text-[11px]"
+                    onClick={() => setShowGymNotes((v) => !v)}
+                  >
+                    {showGymNotes ? "Hide notes" : "Add note"}
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    className="rounded-2xl h-9 px-4 text-sm"
+                    onClick={() => setGymStepIndex((i) => Math.max(0, i - 1))}
+                  >
+                    Prev
+                  </Button>
+                  <Button
+                    className="rounded-2xl flex-1 h-10 text-sm"
+                    onClick={() => {
+                      const restFromTemplate = currentGymEntry?.templateHint?.restSec ?? 0;
+                      const nextRest = restPresetSec || restFromTemplate || 0;
+                      triggerHaptic(40);
+                      setRestSeconds(nextRest);
+                      setRestTargetSec(nextRest);
+                      setRestRunning(nextRest > 0);
+                      setAutoAdvanceAfterRest(true);
+                      if (nextRest > 0) {
+                        setTotalRestSec((v) => v + nextRest);
+                        setRestCount((v) => v + 1);
+                      }
+                      if (nextRest <= 0) {
+                        advanceGymStep();
+                      }
+                    }}
+                  >
+                    Complete set
+                  </Button>
+                  <Button variant="outline" className="rounded-2xl h-9 px-4 text-sm" onClick={addGymSet}>
+                    Add set
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="h-1" />
+        </div>
+
+        <Dialog open={finisherPromptOpen} onOpenChange={setFinisherPromptOpen}>
+          <DialogContent className="rounded-2xl">
+            <DialogHeader>
+              <DialogTitle>Finishers?</DialogTitle>
+              <DialogDescription>
+                You&apos;re done with the main workout. Want to hit the optional finishers?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIncludeFinishers(false);
+                  setFinisherPromptOpen(false);
+                  setAutoAdvanceAfterRest(false);
+                }}
+              >
+                Skip finishers
+              </Button>
+              <Button
+                onClick={() => {
+                  setIncludeFinishers(true);
+                  setFinisherPromptOpen(false);
+                  setGymStepIndex(Math.max(mainGymSteps.length, 0));
+                }}
+              >
+                Do finishers
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={swapOpen} onOpenChange={setSwapOpen}>
+          <DialogContent className="rounded-2xl">
+            <DialogHeader>
+              <DialogTitle>Swap exercise</DialogTitle>
+              <DialogDescription>
+                Pick a similar movement to keep the session flowing.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-2">
+              {swapOptions.length ? (
+                swapOptions.map((ex) => (
+                  <button
+                    key={ex.name}
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-xl border border-border/70 bg-muted/40 px-3 py-2 text-left text-sm hover:bg-muted/60"
+                    onClick={() =>
+                      handleSwapExercise({
+                        name: ex.name,
+                        defaultSets: ex.defaultSets,
+                        repRange: ex.repRange,
+                        restSec: ex.restSec,
+                        weightStep: ex.weightStep,
+                        autoProgress: ex.autoProgress,
+                        timeUnit: ex.timeUnit,
+                      })
+                    }
+                  >
+                    <span className="font-medium">{ex.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatRepRange(ex.repRange)} reps
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  No close matches found for this exercise yet.
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {prCelebration}
+      </div>
     );
   }
 
@@ -2146,175 +4640,8 @@ const headerStats = useMemo(() => {
           }}
         />
       </div>
-      <div className="mx-auto max-w-6xl p-4 md:p-8">
-        {/* Header */}
-        <div className="sticky top-0 z-40 -mx-4 md:-mx-8 px-4 md:px-8 py-4 mb-5">
-          <div className="rounded-3xl border border-foreground/20 bg-card/90 shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
-            <div className="px-5 md:px-8 py-5">
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="h-12 w-12 rounded-xl border border-primary/40 bg-primary/10 flex items-center justify-center shadow-inner overflow-hidden">
-                    <img
-                      src="/forgefit-logo.svg"
-                      alt="Forge Fitness"
-                      className="h-9 w-9"
-                      style={{ filter: "drop-shadow(0 6px 18px var(--icon-glow))" }}
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-3xl sm:text-4xl md:text-5xl font-display uppercase leading-none tracking-[0.16em] sm:tracking-[0.22em] text-transparent bg-clip-text bg-[linear-gradient(90deg,var(--title-from),var(--title-via),var(--title-to))] drop-shadow-[0_10px_24px_rgba(0,0,0,0.3)]">
-                        Forge Fitness
-                      </span>
-                      <Badge
-                        className="rounded-full border-primary/40 bg-primary/15 text-primary uppercase tracking-[0.35em] text-[0.6rem] px-2.5 py-1"
-                        variant="outline"
-                      >
-                        Iron
-                      </Badge>
-                    </div>
-                    <div className="text-[0.68rem] md:text-xs text-muted-foreground uppercase tracking-[0.35em]">
-                      Train heavy • Log fast • Progress weekly
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quick actions */}
-                <div className="flex md:flex-wrap flex-nowrap items-center gap-2 justify-start md:justify-end overflow-x-auto no-scrollbar -mx-2 px-2 py-1">
-                  <Button
-                    variant="secondary"
-                    className="shrink-0 rounded-2xl bg-card/80 hover:bg-card border border-foreground/15 uppercase text-[0.62rem] tracking-[0.28em] h-10"
-                    onClick={() => setTemplateDialogOpen(true)}
-                  >
-                    <ClipboardList className="h-4 w-4" />
-                    Templates
-                  </Button>
-
-                  <Button
-                    variant="secondary"
-                    className="shrink-0 rounded-2xl bg-card/80 hover:bg-card border border-foreground/15 uppercase text-[0.62rem] tracking-[0.28em] h-10"
-                    onClick={() => setGeneratorOpen(true)}
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Generate
-                  </Button>
-
-                  <Button
-                    variant="secondary"
-                    className="shrink-0 rounded-2xl bg-card/80 hover:bg-card border border-foreground/15 uppercase text-[0.62rem] tracking-[0.28em] h-10"
-                    onClick={() => setImportDialogOpen(true)}
-                  >
-                    <Upload className="h-4 w-4" />
-                    Import
-                  </Button>
-
-                  <Button
-                    variant="secondary"
-                    className="shrink-0 rounded-2xl bg-card/80 hover:bg-card border border-foreground/15 uppercase text-[0.62rem] tracking-[0.28em] h-10"
-                    onClick={exportData}
-                  >
-                    <Download className="h-4 w-4" />
-                    Export
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="shrink-0 rounded-2xl border-foreground/20 h-10 w-10"
-                    onClick={() => setSettingsDialogOpen(true)}
-                    aria-label="Open settings"
-                  >
-                    <SettingsIcon className="h-4 w-4" />
-                  </Button>
-
-                </div>
-              </div>
-
-              {/* Stats row */}
-              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div className="rounded-2xl border border-foreground/20 bg-gradient-to-br from-card/95 via-card/80 to-card/60 px-3 py-2 shadow-[0_16px_32px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
-                  <div className="flex items-center gap-2 text-[0.62rem] text-muted-foreground uppercase tracking-[0.3em]">
-                    <Flame className="h-4 w-4" /> Streak
-                  </div>
-                  <div className="mt-1 text-2xl font-display">{headerStats.streak}d</div>
-                </div>
-
-                <div className="rounded-2xl border border-foreground/20 bg-gradient-to-br from-card/95 via-card/80 to-card/60 px-3 py-2 shadow-[0_16px_32px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
-                  <div className="flex items-center gap-2 text-[0.62rem] text-muted-foreground uppercase tracking-[0.3em]">
-                    <History className="h-4 w-4" /> Sessions
-                  </div>
-                  <div className="mt-1 text-2xl font-display">{headerStats.totalSessions}</div>
-                </div>
-
-                <div className="rounded-2xl border border-foreground/20 bg-gradient-to-br from-card/95 via-card/80 to-card/60 px-3 py-2 shadow-[0_16px_32px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
-                  <div className="flex items-center gap-2 text-[0.62rem] text-muted-foreground uppercase tracking-[0.3em]">
-                    <TrendingUp className="h-4 w-4" /> 7d Volume
-                  </div>
-                  <div className="mt-1 text-2xl font-display">{Math.round(headerStats.vol7d).toLocaleString()}</div>
-                </div>
-
-                <div className="rounded-2xl border border-foreground/20 bg-gradient-to-br from-card/95 via-card/80 to-card/60 px-3 py-2 shadow-[0_16px_32px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
-                  <div className="flex items-center gap-2 text-[0.62rem] text-muted-foreground uppercase tracking-[0.3em]">
-                    <CalendarDays className="h-4 w-4" /> Last
-                  </div>
-                  <div className="mt-1 text-2xl font-display">{headerStats.lastLabel}</div>
-                </div>
-              </div>
-
-              {/* Main nav */}
-              <div className="mt-4">
-                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-                  <TabsList
-                    className={`w-full rounded-2xl bg-card/90 border border-foreground/20 p-1 flex md:grid ${isCoach ? "md:grid-cols-5" : "md:grid-cols-4"} gap-1 md:gap-0 overflow-x-auto shadow-[0_14px_30px_rgba(0,0,0,0.18)]`}
-                  >
-                    <TabsTrigger
-                      value="log"
-                      className="rounded-xl uppercase text-[0.6rem] sm:text-[0.62rem] tracking-[0.24em] sm:tracking-[0.32em] whitespace-nowrap min-w-max px-3 sm:px-4 data-[state=active]:bg-primary/20 data-[state=active]:text-foreground data-[state=active]:shadow-[0_8px_20px_rgba(0,0,0,0.2)]"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <ClipboardList className="h-4 w-4" /> Log
-                      </span>
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="history"
-                      className="rounded-xl uppercase text-[0.6rem] sm:text-[0.62rem] tracking-[0.24em] sm:tracking-[0.32em] whitespace-nowrap min-w-max px-3 sm:px-4 data-[state=active]:bg-primary/20 data-[state=active]:text-foreground data-[state=active]:shadow-[0_8px_20px_rgba(0,0,0,0.2)]"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <History className="h-4 w-4" /> History
-                      </span>
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="insights"
-                      className="rounded-xl uppercase text-[0.6rem] sm:text-[0.62rem] tracking-[0.24em] sm:tracking-[0.32em] whitespace-nowrap min-w-max px-3 sm:px-4 data-[state=active]:bg-primary/20 data-[state=active]:text-foreground data-[state=active]:shadow-[0_8px_20px_rgba(0,0,0,0.2)]"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4" /> Insights
-                      </span>
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="calc"
-                      className="rounded-xl uppercase text-[0.6rem] sm:text-[0.62rem] tracking-[0.24em] sm:tracking-[0.32em] whitespace-nowrap min-w-max px-3 sm:px-4 data-[state=active]:bg-primary/20 data-[state=active]:text-foreground data-[state=active]:shadow-[0_8px_20px_rgba(0,0,0,0.2)]"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <Target className="h-4 w-4" /> 1RM
-                      </span>
-                    </TabsTrigger>
-                    {isCoach ? (
-                      <TabsTrigger
-                        value="coach"
-                        className="rounded-xl uppercase text-[0.6rem] sm:text-[0.62rem] tracking-[0.24em] sm:tracking-[0.32em] whitespace-nowrap min-w-max px-3 sm:px-4 data-[state=active]:bg-primary/20 data-[state=active]:text-foreground data-[state=active]:shadow-[0_8px_20px_rgba(0,0,0,0.2)]"
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          <SettingsIcon className="h-4 w-4" /> Coach
-                        </span>
-                      </TabsTrigger>
-                    ) : null}
-                  </TabsList>
-                </Tabs>
-              </div>
-            </div>
-          </div>
-        </div>
+      {prCelebration}
+      <div className="mx-auto w-full max-w-none px-0 pb-6 pt-4">
 
 {/* -------------------- Dialogs -------------------- */}
 
@@ -2331,40 +4658,34 @@ const headerStats = useMemo(() => {
           open={generatorOpen}
           onOpenChange={setGeneratorOpen}
           units={state.settings.units}
-          onGenerate={(templates, days) => {
-            setState((p) => {
-              const nextTemplates = [...templates, ...p.templates];
-              const nextSchedule = days.length
-                ? assignScheduleDays(p.settings.schedule, templates, days)
-                : p.settings.schedule;
-              return {
-                ...p,
-                templates: nextTemplates,
-                settings: { ...p.settings, schedule: nextSchedule },
-              };
-            });
-            const first = templates[0];
-            if (first) {
-              setSelectedTemplateId(first.id);
-              setActiveTab("log");
-            }
+          gender={state.settings.profile.gender}
+          savedSplits={state.savedSplits}
+          onGenerate={(payload) => {
+            replaceProgramTemplates(
+              payload.templates,
+              payload.days,
+              payload.splitKey,
+              payload.source
+            );
+            setActiveTab("dashboard");
           }}
           onAddCoachSplit={(templates, days) => {
             setState((p) => {
-              const nextTemplates = [...templates, ...p.templates];
+              const nextTemplates = templates.map((t) => ({ ...t, source: "coach" as const }));
+              const merged = [...nextTemplates, ...p.templates];
               const nextSchedule = days.length
-                ? assignScheduleDays(p.settings.schedule, templates, days)
+                ? assignScheduleDays(p.settings.schedule, nextTemplates, days)
                 : p.settings.schedule;
               return {
                 ...p,
-                templates: nextTemplates,
+                templates: merged,
                 settings: { ...p.settings, schedule: nextSchedule },
               };
             });
             const first = templates[0];
             if (first) {
               setSelectedTemplateId(first.id);
-              setActiveTab("log");
+              setActiveTab("dashboard");
             }
           }}
         />
@@ -2423,7 +4744,10 @@ const headerStats = useMemo(() => {
         </Dialog>
 
         <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
-          <DialogContent className="w-[calc(100vw-2rem)] max-w-3xl max-h-[85vh] overflow-y-auto overflow-x-hidden rounded-2xl">
+          <DialogContent
+            className="w-[calc(100vw-2rem)] max-w-3xl max-h-[85vh] overflow-y-auto overflow-x-hidden rounded-2xl"
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
             <DialogHeader>
               <DialogTitle>Settings</DialogTitle>
               <DialogDescription>
@@ -2433,8 +4757,23 @@ const headerStats = useMemo(() => {
             <SettingsPanel
               settings={state.settings}
               templates={state.templates}
+              authEmail={authUser?.email || ""}
+              syncStatus={syncStatus}
+              lastSyncAt={lastSyncAt}
+              syncError={syncError}
+              onSyncNow={() => syncNow()}
+              onSignOut={
+                supabaseEnabled
+                  ? async () => {
+                      await supabase?.auth.signOut();
+                      setAuthUser(null);
+                      setRemoteLoaded(false);
+                    }
+                  : undefined
+              }
               onChange={(s) => setState((p) => ({ ...p, settings: s }))}
               onResetRequest={() => setConfirmResetOpen(true)}
+              onDeleteAccountRequest={() => setConfirmDeleteAccountOpen(true)}
             />
             <DialogFooter>
               <Button onClick={() => setSettingsDialogOpen(false)}>Done</Button>
@@ -2504,12 +4843,55 @@ const headerStats = useMemo(() => {
                 New exercise bests this session.
               </div>
             </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+              <div className="rounded-xl border p-3">
+                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  Top sets
+                </div>
+                <div className="mt-2 space-y-2 text-sm">
+                  {(recapData?.topSets || []).length ? (
+                    recapData?.topSets.map((set) => (
+                      <div key={set.name} className="flex items-center justify-between">
+                        <span className="font-medium">{set.name}</span>
+                        <span className="text-muted-foreground">
+                          {set.weight} {state.settings.units} × {set.reps}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-muted-foreground">Log more sets to see highlights.</div>
+                  )}
+                </div>
+              </div>
+              <div className="rounded-xl border p-3">
+                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  Next targets
+                </div>
+                <div className="mt-2 space-y-2 text-sm">
+                  {(recapData?.nextTargets || []).length ? (
+                    recapData?.nextTargets.map((set) => (
+                      <div key={set.name} className="flex items-center justify-between">
+                        <span className="font-medium">{set.name}</span>
+                        <span className="text-muted-foreground">
+                          {set.weight} {state.settings.units} × {set.reps}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-muted-foreground">Hit the rep range to unlock targets.</div>
+                  )}
+                </div>
+              </div>
+            </div>
             <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={shareRecap}>
+                Share recap
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => {
                   setRecapOpen(false);
-                  setActiveTab("history");
+                  setActiveTab("more");
                 }}
               >
                 View history
@@ -2538,998 +4920,407 @@ const headerStats = useMemo(() => {
           </DialogContent>
         </Dialog>
 
+        <Dialog open={confirmDeleteAccountOpen} onOpenChange={setConfirmDeleteAccountOpen}>
+          <DialogContent className="rounded-2xl">
+            <DialogHeader>
+              <DialogTitle>Delete your account?</DialogTitle>
+              <DialogDescription>
+                This removes your cloud data and signs you out. This action can&apos;t be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmDeleteAccountOpen(false)}
+                disabled={deleteAccountLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={deleteAccount}
+                disabled={deleteAccountLoading}
+              >
+                {deleteAccountLoading ? "Deleting..." : "Delete account"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={trophyPopupOpen} onOpenChange={setTrophyPopupOpen}>
+          <DialogContent className="rounded-2xl overflow-hidden">
+            <motion.div
+              className="pointer-events-none absolute inset-0 opacity-70"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.4 }}
+              style={{
+                backgroundImage:
+                  "radial-gradient(60%_50%_at_20%_0%,rgba(255,122,24,0.35),transparent),radial-gradient(50%_50%_at_80%_10%,rgba(255,200,80,0.25),transparent)",
+              }}
+            />
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <motion.div
+                  initial={{ scale: 0.9 }}
+                  animate={{ scale: [1, 1.08, 1] }}
+                  transition={{ duration: 0.6, ease: "easeOut" }}
+                >
+                  <Trophy className="h-5 w-5 text-[#ffb020]" />
+                </motion.div>
+                Trophy unlocked
+              </DialogTitle>
+              <DialogDescription>
+                Big win. Keep stacking these.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3">
+              {trophyPopupIds.map((id) => {
+                const trophy = ACHIEVEMENTS.find((a) => a.id === id);
+                if (!trophy) return null;
+                const Icon = trophy.icon;
+                return (
+                  <div key={id} className="rounded-xl border p-3">
+                    <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                      <Icon className="h-4 w-4" />
+                      Unlocked
+                    </div>
+                    <div className="mt-1 font-medium">{trophy.title}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {trophy.description}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setTrophyPopupOpen(false);
+                  setActiveTab("more");
+                }}
+              >
+                View trophies
+              </Button>
+              <Button onClick={() => setTrophyPopupOpen(false)}>Lets go</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* -------------------- Pages -------------------- */}
+        <div className="pb-28">
+          {!isOnline ? (
+            <div className="mb-4 rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive">
+              You&apos;re offline. Changes will save locally and sync when you&apos;re back online.
+            </div>
+          ) : null}
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+            <TabsContent value="dashboard" className="mt-0">
+              <motion.div variants={pageMotion} initial="hidden" animate="show" className="space-y-4">
+                <div className="text-center space-y-3">
+                  <div className="text-[0.65rem] uppercase tracking-[0.4em] text-muted-foreground">
+                    {formattedDate}
+                  </div>
+                  <div className="text-3xl sm:text-4xl md:text-5xl font-display uppercase tracking-[0.28em] text-transparent bg-clip-text bg-[linear-gradient(90deg,var(--title-from),var(--title-via),var(--title-to))]">
+                    Forge Fitness
+                  </div>
+                  <div className="mx-auto h-[3px] w-32 rounded-full bg-gradient-to-r from-transparent via-[#ff5a1f] to-transparent" />
+                </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-          <TabsContent value="log" className="mt-0">
-            <div className="space-y-4">
-              <Card className="rounded-2xl shadow-md">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                    <Sparkles className="h-5 w-5" /> Coach suggestions
-                  </CardTitle>
-                  <CardDescription>
-                    Accept or skip. Suggestions auto-adjust based on your last sessions.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {Object.keys(insights.suggestions).length === 0 ? (
-                    <div className="text-sm text-muted-foreground">
-                      Log a few workouts with top sets to unlock suggestions.
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {Object.entries(insights.suggestions).slice(0, 8).map(([name, s]) => (
-                        <div key={name} className="rounded-2xl border p-3">
-                          <div className="font-medium">{name}</div>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            Next: {s.next.weight}
-                            {state.settings.units} × {s.next.reps}
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1">{s.reason}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className={`rounded-2xl shadow-md ${setupCollapsed ? "py-1" : ""}`}>
-                <CardHeader className={setupCollapsed ? "py-1 px-3" : ""}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle className={`flex items-center gap-2 font-display uppercase tracking-[0.2em] ${setupCollapsed ? "text-sm" : "text-sm md:text-base"}`}>
-                        {setupCollapsed ? null : <ClipboardList className="h-5 w-5" />}
-                        {setupCollapsed ? "Setup" : "Workout setup"}
-                      </CardTitle>
-                      {setupCollapsed ? null : (
+                {isBirthday ? (
+                  <motion.div variants={cardMotion}>
+                    <Card className="rounded-2xl shadow-md card-hero">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                          <Sparkles className="h-5 w-5" /> Birthday boost
+                        </CardTitle>
                         <CardDescription>
-                          Choose a template or build a custom workout before you start logging.
+                          We&apos;re celebrating your level-up today.
                         </CardDescription>
-                      )}
-                    </div>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      className="rounded-full text-muted-foreground hover:text-foreground"
-                      onClick={() => setSetupCollapsed((v) => !v)}
-                      aria-label={setupCollapsed ? "Expand workout setup" : "Collapse workout setup"}
-                    >
-                      <ChevronDown
-                        className={`h-4 w-4 transition-transform ${setupCollapsed ? "-rotate-90" : ""}`}
-                      />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className={`space-y-4 ${setupCollapsed ? "hidden" : ""}`}>
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        className="rounded-xl"
-                        variant={logMode === "template" ? "default" : "outline"}
-                        onClick={() => setLogMode("template")}
-                      >
-                        Use template
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="rounded-xl"
-                        variant={logMode === "custom" ? "default" : "outline"}
-                        onClick={() => setLogMode("custom")}
-                      >
-                        Create your own
-                      </Button>
-                    </div>
-
-                    {logMode === "template" ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-xl"
-                        onClick={() => setTemplateDialogOpen(true)}
-                      >
-                        Edit templates
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-xl"
-                        onClick={() => {
-                          if ((customExercises || []).length === 0) {
-                            alert("Add at least one exercise first.");
-                            return;
-                          }
-                          const newTemplate: Template = {
-                            id: uid(),
-                            name: (customWorkoutName || "Custom Workout").trim() || "Custom Workout",
-                            exercises: (customExercises || []).map((e) => ({
-                              ...e,
-                              id: e.id || uid(),
-                            })),
-                          };
-                          setState((p) => ({ ...p, templates: [newTemplate, ...(p.templates || [])] }));
-                          setSelectedTemplateId(newTemplate.id);
-                          setLogMode("template");
-                          alert("Saved as a template!");
-                        }}
-                      >
-                        Save as template
-                      </Button>
-                    )}
-                  </div>
-
-                  {logMode === "template" ? (
-                    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_1fr_1fr] gap-3">
-                      <div className="space-y-1">
-                        <Label>Template</Label>
-                        <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
-                          <SelectTrigger className="w-full min-w-0">
-                            <SelectValue className="truncate" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {state.templates.map((t) => (
-                              <SelectItem key={t.id} value={t.id}>
-                                {t.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Date</Label>
-                        <Input value={sessionDate} onChange={(e) => setSessionDate(e.target.value)} placeholder="YYYY-MM-DD" />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Units</Label>
-                        <Select
-                          value={state.settings.units}
-                          onValueChange={(v) => setState((p) => ({ ...p, settings: { ...p.settings, units: v as Units } }))}
-                        >
-                          <SelectTrigger className="w-full min-w-0">
-                            <SelectValue className="truncate" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="lb">lb</SelectItem>
-                            <SelectItem value="kg">kg</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <div className="space-y-1 md:col-span-2">
-                          <Label>Workout name</Label>
-                          <Input
-                            value={customWorkoutName}
-                            onChange={(e) => setCustomWorkoutName(e.target.value)}
-                            placeholder="Custom Workout"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label>Date</Label>
-                          <Input value={sessionDate} onChange={(e) => setSessionDate(e.target.value)} placeholder="YYYY-MM-DD" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <div className="space-y-1">
-                          <Label>Units</Label>
-                          <Select
-                            value={state.settings.units}
-                            onValueChange={(v) => setState((p) => ({ ...p, settings: { ...p.settings, units: v as Units } }))}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="lb">lb</SelectItem>
-                              <SelectItem value="kg">kg</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1 md:col-span-2">
-                          <Label>Add exercise</Label>
-                          <div className="flex items-center gap-2">
-                            <Select
-                              onValueChange={(v) => {
-                                const preset = COMMON_EXERCISES.find((x) => x.name === v);
-                                if (!preset) return;
-                                setCustomExercises((prev) => [
-                                  ...(prev || []),
-                                  { id: uid(), ...preset },
-                                ]);
-                              }}
-                            >
-                              <SelectTrigger className="flex-1">
-                                <SelectValue placeholder="Pick from common exercises" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {COMMON_EXERCISES.map((item) => (
-                                  <SelectItem key={item.name} value={item.name}>
-                                    {item.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-
-                            <Button
-                              variant="outline"
-                              className="rounded-xl"
-                              onClick={() =>
-                                setCustomExercises((prev) => [
-                                  ...(prev || []),
-                                  {
-                                    id: uid(),
-                                    name: "New Exercise",
-                                    defaultSets: 3,
-                                    repRange: { min: 8, max: 12 },
-                                    restSec: 120,
-                                    weightStep: 5,
-                                    autoProgress: true,
-                                  },
-                                ])
-                              }
-                            >
-                              <Plus className="h-4 w-4 mr-2" /> Blank
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {(customExercises || []).length === 0 ? (
+                      </CardHeader>
+                      <CardContent className="space-y-3">
                         <div className="text-sm text-muted-foreground">
-                          Add a few exercises to start building your workout.
+                          Happy Birthday{state.settings.profile.name ? `, ${state.settings.profile.name}` : ""}!
+                          {birthdayAge !== null ? ` ${birthdayAge} years strong.` : " Another year, more gains."}
+                        </div>
+                        <div className="rounded-2xl border border-foreground/10 bg-background/60 px-4 py-3 text-sm">
+                          Birthday bonus unlocked: extra recovery credit + a motivation badge in your profile.
+                        </div>
+                        <Button
+                          className="rounded-2xl"
+                          onClick={() => setBirthdayClaimed(true)}
+                          disabled={birthdayClaimed}
+                        >
+                          {birthdayClaimed ? "Birthday boost active" : "Claim birthday boost"}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ) : null}
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-edge">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Sparkles className="h-5 w-5" /> Smart Trainer notes
+                      </CardTitle>
+                      <CardDescription>
+                        Daily coaching cues. Add your focus points and reminders for this session.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <textarea
+                        className="w-full min-h-[96px] rounded-xl border border-border/70 bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                        placeholder="Smart Trainer cues for today..."
+                        value={state.settings.profile.coachNotes || ""}
+                        onChange={(e) =>
+                          setState((p) => ({
+                            ...p,
+                            settings: {
+                              ...p.settings,
+                              profile: { ...p.settings.profile, coachNotes: e.target.value },
+                            },
+                          }))
+                        }
+                      />
+                      <div className="text-xs text-muted-foreground">
+                        Example: tempo cues, focus muscles, or form reminders for today.
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-edge">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Sparkles className="h-5 w-5" /> Smart Trainer suggestions
+                      </CardTitle>
+                      <CardDescription>
+                        Accept or skip. Suggestions auto-adjust based on your last sessions.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {Object.keys(insights.suggestions).length === 0 ? (
+                        <div className="text-sm text-muted-foreground">
+                          Log a few workouts with top sets to unlock suggestions.
                         </div>
                       ) : (
-                        <div className="space-y-2">
-                          {(customExercises || []).map((ex) => (
-                            <div key={ex.id} className="rounded-2xl border p-3">
-                              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">Name</Label>
-                                    <Input
-                                      value={ex.name}
-                                      onChange={(e) =>
-                                        setCustomExercises((prev) =>
-                                          (prev || []).map((x) =>
-                                            x.id === ex.id ? { ...x, name: e.target.value } : x
-                                          )
-                                        )
-                                      }
-                                    />
-                                  </div>
-                                  <div className="grid grid-cols-3 gap-2">
-                                    <div className="space-y-1">
-                                      <Label className="text-xs">Sets</Label>
-                                      <Input
-                                        inputMode="numeric"
-                                        value={ex.defaultSets}
-                                        onChange={(e) => {
-                                          const v = clamp(Number(e.target.value) || 1, 1, 12);
-                                          setCustomExercises((prev) =>
-                                            (prev || []).map((x) => (x.id === ex.id ? { ...x, defaultSets: v } : x))
-                                          );
-                                        }}
-                                      />
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-xs">Min</Label>
-                                      <Input
-                                        inputMode="numeric"
-                                        value={ex.repRange?.min ?? 8}
-                                        onChange={(e) => {
-                                          const v = clamp(Number(e.target.value) || 1, 1, 999);
-                                          setCustomExercises((prev) =>
-                                            (prev || []).map((x) =>
-                                              x.id === ex.id
-                                                ? { ...x, repRange: { min: v, max: Math.max(v, x.repRange?.max ?? 12) } }
-                                                : x
-                                            )
-                                          );
-                                        }}
-                                      />
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-xs">Max</Label>
-                                      <Input
-                                        inputMode="numeric"
-                                        value={ex.repRange?.max ?? 12}
-                                        onChange={(e) => {
-                                          const v = clamp(Number(e.target.value) || 1, 1, 999);
-                                          setCustomExercises((prev) =>
-                                            (prev || []).map((x) =>
-                                              x.id === ex.id
-                                                ? { ...x, repRange: { min: Math.min(x.repRange?.min ?? 8, v), max: v } }
-                                                : x
-                                            )
-                                          );
-                                        }}
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <Button
-                                  size="icon"
-                                  variant="destructive"
-                                  className="rounded-xl"
-                                  onClick={() =>
-                                    setCustomExercises((prev) => (prev || []).filter((x) => x.id !== ex.id))
-                                  }
-                                  aria-label="Delete exercise"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+                        <motion.div variants={listMotion} className="space-y-2">
+                          {Object.entries(insights.suggestions).slice(0, 8).map(([name, s]) => (
+                            <motion.div key={name} variants={listItemMotion} className="rounded-2xl border p-3">
+                              <div className="font-medium">{name}</div>
+                              <div className="text-sm text-muted-foreground mt-1">
+                                Next: {s.next.weight}
+                                {state.settings.units} × {s.next.reps}
                               </div>
-
-                              <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
-                                <div className="space-y-1">
-                                  <Label className="text-xs">Rest (sec)</Label>
-                                  <Input
-                                    inputMode="numeric"
-                                    value={ex.restSec}
-                                    onChange={(e) => {
-                                      const v = clamp(Number(e.target.value) || 0, 0, 600);
-                                      setCustomExercises((prev) =>
-                                        (prev || []).map((x) => (x.id === ex.id ? { ...x, restSec: v } : x))
-                                      );
-                                    }}
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <Label className="text-xs">Weight step</Label>
-                                  <Input
-                                    inputMode="decimal"
-                                    value={ex.weightStep}
-                                    onChange={(e) => {
-                                      const v = clamp(Number(e.target.value) || 1, 0, 50);
-                                      setCustomExercises((prev) =>
-                                        (prev || []).map((x) => (x.id === ex.id ? { ...x, weightStep: v } : x))
-                                      );
-                                    }}
-                                  />
-                                </div>
-                                <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
-                                  <div>
-                                    <div className="font-medium text-xs">Auto-progress</div>
-                                    <div className="text-[11px] text-muted-foreground">Enable coach suggestions</div>
-                                  </div>
-                                  <Switch
-                                    checked={!!ex.autoProgress}
-                                    onCheckedChange={(v) =>
-                                      setCustomExercises((prev) =>
-                                        (prev || []).map((x) => (x.id === ex.id ? { ...x, autoProgress: v } : x))
-                                      )
-                                    }
-                                  />
-                                </div>
-                              </div>
-                            </div>
+                              <div className="text-xs text-muted-foreground mt-1">{s.reason}</div>
+                            </motion.div>
                           ))}
-                        </div>
+                        </motion.div>
                       )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                    </CardContent>
+                  </Card>
+                </motion.div>
 
-              <Card className="rounded-2xl shadow-md">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                    <ClipboardList className="h-5 w-5" /> Log today’s workout
-                  </CardTitle>
-                  <CardDescription>
-                    Pick a template, log your sets, and let Forge Fitness suggest the next goal.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="rounded-2xl border border-foreground/20 bg-card/85 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                          Scheduled • {scheduleInfo.dayName}
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-minimal">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                      <TrendingUp className="h-5 w-5" /> Momentum
+                    </CardTitle>
+                    <CardDescription>Streak, volume, and recent sessions.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <motion.div variants={listMotion} className="contents">
+                      <motion.div variants={listItemMotion} className="rounded-2xl border p-3">
+                        <div className="flex items-center gap-2 text-[0.6rem] text-muted-foreground uppercase tracking-[0.3em]">
+                          <Flame className="h-4 w-4" /> Streak
                         </div>
-                        <div className="text-lg font-semibold">
-                          {scheduleInfo.isRestDay
-                            ? "Active Rest Day: you deserve it."
-                            : scheduleInfo.templateName || "No workout scheduled."}
+                        <div className="mt-1 text-2xl font-display">{headerStats.streak}d</div>
+                      </motion.div>
+                      <motion.div variants={listItemMotion} className="rounded-2xl border p-3">
+                        <div className="flex items-center gap-2 text-[0.6rem] text-muted-foreground uppercase tracking-[0.3em]">
+                          <History className="h-4 w-4" /> Sessions
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Select
-                          value={
-                            (state.settings.schedule?.[getWeekdayKey(sessionDate)] || "")
-                              ? getWeekdayKey(sessionDate)
-                              : "unassigned"
+                        <div className="mt-1 text-2xl font-display">{headerStats.totalSessions}</div>
+                      </motion.div>
+                      <motion.div variants={listItemMotion} className="rounded-2xl border p-3">
+                        <div className="flex items-center gap-2 text-[0.6rem] text-muted-foreground uppercase tracking-[0.3em]">
+                          <TrendingUp className="h-4 w-4" /> 7d Volume
+                        </div>
+                        <div className="mt-1 text-2xl font-display">
+                          {Math.round(headerStats.vol7d).toLocaleString()}
+                        </div>
+                      </motion.div>
+                      <motion.div variants={listItemMotion} className="rounded-2xl border p-3">
+                        <div className="flex items-center gap-2 text-[0.6rem] text-muted-foreground uppercase tracking-[0.3em]">
+                          <CalendarDays className="h-4 w-4" /> Last
+                        </div>
+                        <div className="mt-1 text-2xl font-display">{headerStats.lastLabel}</div>
+                      </motion.div>
+                    </motion.div>
+                  </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-hero">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                      <ClipboardList className="h-5 w-5" /> Today’s workout
+                    </CardTitle>
+                    <CardDescription>
+                      {scheduleInfo.templateName || "No workout scheduled yet."}
+                    </CardDescription>
+                  </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_auto] gap-3">
+                    <div className="space-y-1">
+                      <Label>Workout</Label>
+                      <Select
+                        value={scheduleInfo.isRestDay ? "rest" : dashboardTemplate?.id || ""}
+                        onValueChange={(v) => {
+                          const dayKey = getWeekdayKey(sessionDate);
+                          setState((prev) => ({
+                            ...prev,
+                            settings: {
+                              ...prev.settings,
+                              schedule: {
+                                ...(prev.settings.schedule || emptySchedule),
+                                [dayKey]: v,
+                              },
+                            },
+                          }));
+                          if (v !== "rest") {
+                            setSelectedTemplateId(v);
                           }
-                          onValueChange={(v) => {
-                            if (v === "unassigned") return;
-                            const day = WEEKDAYS.find((d) => d.key === v);
-                            if (!day) return;
-                            setSessionDate(setDateToWeekday(sessionDate, day.index));
-                          }}
-                        >
-                          <SelectTrigger className="h-8 rounded-xl text-xs w-[140px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unassigned">Unassigned day</SelectItem>
-                            {scheduledDayOptions.map((day) => (
-                              <SelectItem key={day.key} value={day.key}>
-                                {scheduledDayLabel(day.key)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {!scheduleInfo.isRestDay ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="rounded-xl"
-                            onClick={() => {
-                              const key = getWeekdayKey(sessionDate);
-                              setState((p) => ({
-                                ...p,
-                                settings: {
-                                  ...p.settings,
-                                  schedule: { ...(p.settings.schedule || emptySchedule), [key]: "rest" },
-                                },
-                              }));
-                            }}
-                          >
-                            Mark rest
-                          </Button>
-                        ) : null}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="rounded-xl"
-                          onClick={() => setSessionDate(addDaysISO(sessionDate, 1))}
-                        >
-                          Skip day
-                        </Button>
-                        {scheduleInfo.isRestDay && !forceLog ? (
-                          <Button size="sm" className="rounded-xl" onClick={() => setForceLog(true)}>
-                            Log anyway
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="mt-4 rounded-xl border border-foreground/10 bg-background/70 p-3">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                            Session progress
-                          </div>
-                          <div className="text-sm font-medium">
-                            {sessionProgress.completed} / {sessionProgress.planned} sets •{" "}
-                            {sessionProgress.pct}%
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="rounded-xl"
-                            onClick={() => {
-                              setRestSeconds(60);
-                              setRestRunning(true);
-                            }}
-                          >
-                            Rest 1:00
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="rounded-xl"
-                            onClick={() => {
-                              setRestSeconds(90);
-                              setRestRunning(true);
-                            }}
-                          >
-                            Rest 1:30
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="rounded-xl"
-                            onClick={() => {
-                              setRestSeconds(120);
-                              setRestRunning(true);
-                            }}
-                          >
-                            Rest 2:00
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="mt-3 flex items-center gap-3">
-                        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                          Rest timer
-                        </div>
-                        <div className="text-lg font-display">
-                          {String(Math.floor(restSeconds / 60)).padStart(2, "0")}:
-                          {String(restSeconds % 60).padStart(2, "0")}
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="rounded-xl"
-                          onClick={() => setRestRunning((v) => !v)}
-                        >
-                          {restRunning ? "Pause" : "Start"}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="rounded-xl"
-                          onClick={() => {
-                            setRestSeconds(0);
-                            setRestRunning(false);
-                          }}
-                        >
-                          Clear
-                        </Button>
-                      </div>
-                    </div>
-                      <div className="mt-4">
-                        <Button
-                        className="w-full h-12 rounded-2xl bg-primary text-primary-foreground font-display uppercase tracking-[0.3em] text-sm shadow-[0_18px_36px_rgba(0,0,0,0.45)] hover:-translate-y-0.5 hover:shadow-[0_24px_44px_rgba(0,0,0,0.55)]"
-                        onClick={() => {
-                          setLogMode("template");
-                          setGymMode(true);
-                          setGymStepIndex(0);
                         }}
                       >
-                        Start Session
+                        <SelectTrigger className="w-full min-w-0">
+                          <SelectValue placeholder="Choose a workout" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="rest">Active Rest Day</SelectItem>
+                          {state.templates.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        className="rounded-2xl h-11 px-6"
+                        onClick={startWorkout}
+                        disabled={!dashboardTemplate}
+                      >
+                        <Play className="h-4 w-4 mr-2" /> Start workout
                       </Button>
                     </div>
                   </div>
+                  <div className="text-xs text-muted-foreground">
+                    Change the workout here if you want a different session today.
+                  </div>
+                </CardContent>
+                  </Card>
+                </motion.div>
 
-                  {scheduleInfo.isRestDay && !forceLog ? (
-                    <div className="rounded-2xl border border-foreground/20 bg-card/80 p-4 space-y-3 shadow-[0_16px_34px_rgba(0,0,0,0.16)]">
-                      <div className="text-sm text-muted-foreground uppercase tracking-[0.2em]">
-                        Recovery Ideas
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                    <Flame className="h-5 w-5" /> Daily weigh-in
+                  </CardTitle>
+                  <CardDescription>Track weight to see weekly trends.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {todaysWeighIn && !weighInEditing ? (
+                    <div className="rounded-2xl border border-foreground/10 bg-background/60 px-4 py-3">
+                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                        Today&apos;s weigh-in
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="rounded-xl border border-foreground/15 bg-card/70 p-3">
-                          <div className="font-medium">Mobility Reset</div>
-                          <div className="text-sm text-muted-foreground">
-                            15-20 min hips, thoracic, ankles + banded shoulder work.
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-foreground/15 bg-card/70 p-3">
-                          <div className="font-medium">Easy Cardio</div>
-                          <div className="text-sm text-muted-foreground">
-                            25-35 min incline walk or bike, conversational pace.
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-foreground/15 bg-card/70 p-3">
-                          <div className="font-medium">Soft Tissue</div>
-                          <div className="text-sm text-muted-foreground">
-                            Foam roll quads, lats, glutes, and calves for 8-10 min.
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-foreground/15 bg-card/70 p-3">
-                          <div className="font-medium">Breath + Core</div>
-                          <div className="text-sm text-muted-foreground">
-                            3 rounds: dead bug 10/side, side plank 30s/side.
-                          </div>
-                        </div>
+                      <div className="mt-2 text-3xl font-display">
+                        {todaysWeighIn.weight} {state.settings.units}
                       </div>
-                    </div>
-                  ) : !scheduleInfo.templateId ? (
-                    <div className="rounded-2xl border border-foreground/20 bg-card/80 p-4 space-y-3 shadow-[0_16px_34px_rgba(0,0,0,0.16)]">
-                      <div className="text-sm text-muted-foreground uppercase tracking-[0.2em]">
-                        No Workout Assigned
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        Assign a template to this day in Settings → Weekly schedule, or add a new
-                        workout template.
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          className="rounded-xl"
-                          onClick={() => setTemplateDialogOpen(true)}
-                        >
-                          Manage templates
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="rounded-xl"
-                          onClick={() => setActiveTab("log")}
-                        >
-                          Log anyway
-                        </Button>
-                      </div>
-                    </div>
-                  ) : gymMode ? (
-                    <div className="rounded-2xl border border-primary/40 bg-gradient-to-br from-primary/10 via-card/80 to-card/60 p-5 shadow-[0_18px_40px_rgba(0,0,0,0.22)]">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                            Gym Mode • Set {gymStepIndex + 1} of {Math.max(gymSteps.length, 1)}
-                          </div>
-                          <div className="text-2xl font-display uppercase">
-                            {currentGymEntry?.exerciseName || "No set selected"}
-                          </div>
-                          {currentGymEntry?.templateHint ? (
-                            <div className="text-sm text-muted-foreground">
-                              Target {formatRepRange(currentGymEntry.templateHint.repRange)}{" "}
-                              {currentGymEntry.templateHint.timeUnit === "seconds"
-                                ? "sec"
-                                : currentGymEntry.templateHint.timeUnit === "minutes"
-                                ? "min"
-                                : "reps"}{" "}
-                              • Rest {Math.round(currentGymEntry.templateHint.restSec / 60)} min
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="rounded-xl"
-                            onClick={() => {
-                              setGymMode(false);
-                              setRestRunning(false);
-                              setRestSeconds(0);
-                              setAutoAdvanceAfterRest(false);
-                            }}
-                          >
-                            Exit
-                          </Button>
-                          <Button
-                            size="sm"
-                            className="rounded-xl"
-                            onClick={saveSession}
-                          >
-                            Save
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 space-y-4">
-                        {restRunning ? (
-                          <div className="rounded-2xl border border-foreground/20 bg-card/80 p-4 shadow-[0_14px_30px_rgba(0,0,0,0.2)]">
-                            <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                              Rest timer
-                            </div>
-                            <div className="mt-2 text-3xl font-display">
-                              {String(Math.floor(restSeconds / 60)).padStart(2, "0")}:
-                              {String(restSeconds % 60).padStart(2, "0")}
-                            </div>
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                className="rounded-xl"
-                                onClick={() => setRestRunning((v) => !v)}
-                              >
-                                {restRunning ? "Pause" : "Start"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="rounded-xl"
-                                onClick={() => {
-                                  setRestRunning(false);
-                                  setRestSeconds(0);
-                                  setAutoAdvanceAfterRest(false);
-                                }}
-                              >
-                                Skip rest
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                              {currentGymEntry?.templateHint?.timeUnit ? null : (
-                                <div className="space-y-1">
-                                  <Label>Weight ({state.settings.units})</Label>
-                                  <Input
-                                    inputMode="decimal"
-                                    value={currentGymSet?.weight || ""}
-                                    onChange={(e) => updateGymSet({ weight: e.target.value })}
-                                    placeholder="0"
-                                  />
-                                </div>
-                              )}
-                              <div className="space-y-1">
-                                <Label>
-                                  {currentGymEntry?.templateHint?.timeUnit === "seconds"
-                                    ? "Seconds"
-                                    : currentGymEntry?.templateHint?.timeUnit === "minutes"
-                                    ? "Minutes"
-                                    : "Reps"}
-                                </Label>
-                                <Input
-                                  inputMode="numeric"
-                                  value={currentGymSet?.reps || ""}
-                                  onChange={(e) => updateGymSet({ reps: e.target.value })}
-                                  placeholder="0"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label>RPE</Label>
-                                <Input
-                                  inputMode="decimal"
-                                  value={currentGymSet?.rpe || ""}
-                                  onChange={(e) => updateGymSet({ rpe: e.target.value })}
-                                  placeholder="8.5"
-                                />
-                              </div>
-                            </div>
-                            <div className="space-y-1">
-                              <Label>Notes</Label>
-                              <Input
-                                value={currentGymSet?.notes || ""}
-                                onChange={(e) => updateGymSet({ notes: e.target.value })}
-                                placeholder="Quick note..."
-                              />
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      <div className="mt-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            variant="outline"
-                            className="rounded-2xl"
-                            onClick={() => setGymStepIndex((i) => Math.max(0, i - 1))}
-                          >
-                            Prev
-                          </Button>
-                          <Button
-                            className="rounded-2xl"
-                            onClick={() => {
-                              const restFromTemplate = currentGymEntry?.templateHint?.restSec ?? 0;
-                              const nextRest = restPresetSec || restFromTemplate || 0;
-                              setRestSeconds(nextRest);
-                              setRestRunning(nextRest > 0);
-                              setAutoAdvanceAfterRest(true);
-                              if (nextRest <= 0) {
-                                setGymStepIndex((i) =>
-                                  Math.min(Math.max(gymSteps.length - 1, 0), i + 1)
-                                );
-                              }
-                            }}
-                          >
-                            Complete set
-                          </Button>
-                          <Button variant="outline" className="rounded-2xl" onClick={addGymSet}>
-                            Add set
-                          </Button>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span>Rest preset</span>
-                          {[60, 90, 120, 150].map((sec) => (
-                            <Button
-                              key={sec}
-                              size="sm"
-                              variant={restPresetSec === sec ? "secondary" : "outline"}
-                              className="rounded-xl"
-                              onClick={() => setRestPresetSec(sec)}
-                            >
-                              {Math.floor(sec / 60)}:{String(sec % 60).padStart(2, "0")}
-                            </Button>
-                          ))}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="rounded-xl"
-                            onClick={() => {
-                              const v = currentGymEntry?.templateHint?.restSec ?? 90;
-                              setRestPresetSec(v);
-                            }}
-                          >
-                            Use target
-                          </Button>
-                        </div>
-                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-3 rounded-xl"
+                        onClick={() => {
+                          setWeighInInput(String(todaysWeighIn.weight));
+                          setWeighInEditing(true);
+                        }}
+                      >
+                        Edit weigh-in
+                      </Button>
                     </div>
                   ) : (
                     <>
-
-                  <div className="space-y-3">
-                    {/* Main work */}
-                    {groupedMainEntries.map((group, idx) => {
-                      if (group.type === "superset" || group.type === "triset") {
-                        return (
-                          <Card
-                            key={`superset_${group.tag}_${idx}`}
-                            className="rounded-2xl border-primary/40 bg-gradient-to-br from-primary/10 via-card/80 to-card/60"
+                      <BigMetricSlider
+                        label="Weight"
+                        value={weighInSliderValue}
+                        onChange={(v) => setWeighInInput(v)}
+                        min={weighInRange.min}
+                        max={weighInRange.max}
+                        step={weighInRange.step}
+                        suffix={state.settings.units}
+                        tickEvery={weighInRange.tickEvery}
+                        tickOffset={10}
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button className="rounded-xl flex-1" onClick={saveWeighIn}>
+                          Save weigh-in
+                        </Button>
+                        {todaysWeighIn ? (
+                          <Button
+                            variant="outline"
+                            className="rounded-xl"
+                            onClick={() => setWeighInEditing(false)}
                           >
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-sm font-display uppercase tracking-[0.2em] text-primary">
-                                {group.type === "triset" ? "Triset" : "Superset"} {group.tag}
-                              </CardTitle>
-                              <CardDescription>
-                                {group.entries.map((e) => e.exerciseName).join(" + ")}
-                              </CardDescription>
-                              <div className="mt-2 text-xs text-muted-foreground">
-                                {group.type === "triset"
-                                  ? "Order: A → B → C for set 1, repeat for set 2, etc."
-                                  : "Order: A then B for set 1, repeat for set 2, etc."}
-                              </div>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                              {group.type === "superset" && group.entries.length === 2 ? (
-                                <SupersetLogger
-                                  entries={group.entries as [WorkingEntry, WorkingEntry]}
-                                  units={state.settings.units}
-                                  suggestions={insights.suggestions}
-                                  onChange={(id, next) => {
-                                    setWorkingEntries((prev) =>
-                                      prev.map((p) => (p.exerciseId === id ? next : p))
-                                    );
-                                  }}
-                                />
-                              ) : group.type === "triset" && group.entries.length === 3 ? (
-                                <TrisetLogger
-                                  entries={group.entries as [WorkingEntry, WorkingEntry, WorkingEntry]}
-                                  units={state.settings.units}
-                                  suggestions={insights.suggestions}
-                                  onChange={(id, next) => {
-                                    setWorkingEntries((prev) =>
-                                      prev.map((p) => (p.exerciseId === id ? next : p))
-                                    );
-                                  }}
-                                />
-                              ) : (
-                                group.entries.map((entry) => (
-                                  <ExerciseLogger
-                                    key={entry.exerciseId}
-                                    variant="plain"
-                                    index={mainIndexMap.get(entry.exerciseId) || 0}
-                                    entry={entry}
-                                    units={state.settings.units}
-                                    suggestion={insights.suggestions[entry.exerciseName]}
-                                    onChange={(next) => {
-                                      setWorkingEntries((prev) =>
-                                        prev.map((p) => (p.exerciseId === next.exerciseId ? next : p))
-                                      );
-                                    }}
-                                  />
-                                ))
-                              )}
-                            </CardContent>
-                          </Card>
-                        );
-                      }
-
-                      const entry = group.entries[0];
-                      return (
-                        <ExerciseLogger
-                          key={entry.exerciseId}
-                          index={mainIndexMap.get(entry.exerciseId) || 0}
-                          entry={entry}
-                          units={state.settings.units}
-                          suggestion={insights.suggestions[entry.exerciseName]}
-                          onChange={(next) => {
-                            setWorkingEntries((prev) =>
-                              prev.map((p) => (p.exerciseId === next.exerciseId ? next : p))
-                            );
-                          }}
-                        />
-                      );
-                    })}
-
-                    {/* Finishers */}
-                    {finisherEntries.length > 0 && (
-                      <details className="rounded-2xl border bg-muted/30 p-4">
-                        <summary className="cursor-pointer font-medium flex items-center justify-between text-sm">
-                          <span>Finishers</span>
-                          <Badge variant="secondary" className="rounded-xl">5–10 min</Badge>
-                        </summary>
-                        <div className="mt-4 space-y-3">
-                          {finisherEntries.map((entry, idx) => (
-                              <ExerciseLogger
-                                key={entry.exerciseId}
-                                index={idx}
-                                entry={entry}
-                                units={state.settings.units}
-                                suggestion={insights.suggestions[entry.exerciseName]}
-                                onChange={(next) => {
-                                  setWorkingEntries((prev) =>
-                                    prev.map((p) => (p.exerciseId === next.exerciseId ? next : p))
-                                  );
-                                }}
-                              />
-                            ))}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Notes (optional)</Label>
-                    <Input value={sessionNotes} onChange={(e) => setSessionNotes(e.target.value)} placeholder="How did it feel?" />
-                  </div>
-
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="text-sm text-muted-foreground">Tip: Log your top set — Forge Fitness handles the math and progression.</div>
-                    <Button className="rounded-2xl" onClick={saveSession}>
-                      <Save className="h-4 w-4 mr-2" /> Save session
-                    </Button>
-                  </div>
+                            Cancel
+                          </Button>
+                        ) : null}
+                      </div>
                     </>
                   )}
+                  <WeightTrendGraph
+                    points={(state.weighIns || []).slice(0, 14)}
+                    units={state.settings.units}
+                  />
+                  <div className="text-xs text-muted-foreground">{energyLabel}</div>
+                  <motion.div variants={listMotion} className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {recentWeighIns.length === 0 ? (
+                      <div className="text-sm text-muted-foreground col-span-full">
+                        No weigh-ins yet.
+                      </div>
+                    ) : (
+                      recentWeighIns.map((w) => (
+                        <motion.div key={w.dateISO} variants={listItemMotion} className="rounded-xl border p-2">
+                          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                            {formatDate(w.dateISO)}
+                          </div>
+                          <div className="text-lg font-display">
+                            {w.weight} {state.settings.units}
+                          </div>
+                        </motion.div>
+                      ))
+                    )}
+                  </motion.div>
                 </CardContent>
-              </Card>
+                  </Card>
+                </motion.div>
 
-            </div>
-
-          </TabsContent>
-
-            <TabsContent value="history" className="mt-0">
-            <div className="space-y-4">
-              <Card className="rounded-2xl shadow-md">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                    <History className="h-5 w-5" /> Training history
-                  </CardTitle>
-                  <CardDescription>Search and review past sessions.</CardDescription>
-                </CardHeader>
-
-                <CardContent className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="relative flex-1">
-                      <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
-                      <Input
-                        className="pl-9"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search templates, dates, exercises…"
-                      />
-                    </div>
-
-                    <Button
-                      variant="outline"
-                      className="rounded-xl"
-                      onClick={() => setActiveTab("log")}
-                    >
-                      Log
-                    </Button>
-                  </div>
-
-                  {filteredSessions.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">No sessions yet.</div>
-                  ) : (
-                    <div className="space-y-3">
-                      {filteredSessions.map((s) => (
-                        <SessionCard
-                          key={s.id}
-                          session={s}
-                          units={state.settings.units}
-                          onDelete={() => deleteSession(s.id)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="insights" className="mt-0">
-            <div className="space-y-4">
               {state.settings.powerliftingMode ? (
-                <Card className="rounded-2xl shadow-md">
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
                       <Dumbbell className="h-5 w-5" /> Big 3 1RM
                     </CardTitle>
-                    <CardDescription>
-                      Best estimated 1RM from your logged top sets.
-                    </CardDescription>
+                    <CardDescription>Powerlifter snapshot for the week.</CardDescription>
                   </CardHeader>
                   <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {(
@@ -3552,32 +5343,17 @@ const headerStats = useMemo(() => {
                       </div>
                     ))}
                   </CardContent>
-                </Card>
+                  </Card>
+                </motion.div>
               ) : null}
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <Card className="lg:col-span-2 rounded-2xl shadow-md">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                    <TrendingUp className="h-5 w-5" /> Progress overview
-                  </CardTitle>
-                  <CardDescription>
-                    Quick glance at strength trends and recent PRs.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  Log more sessions to populate this area.
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-2xl shadow-md">
+              <motion.div variants={cardMotion}>
+                <Card className="rounded-2xl shadow-md card-edge">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
                     <Target className="h-5 w-5" /> Goals
                   </CardTitle>
-                  <CardDescription>
-                    Track targets and let Forge Fitness propose new ones.
-                  </CardDescription>
+                  <CardDescription>Today’s focus and weekly targets.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex items-center gap-2">
@@ -3588,7 +5364,6 @@ const headerStats = useMemo(() => {
                       Auto goals
                     </Button>
                   </div>
-
                   <GoalsPanel
                     goals={state.goals}
                     history={exerciseHistory}
@@ -3597,155 +5372,1786 @@ const headerStats = useMemo(() => {
                     onArchive={archiveGoal}
                   />
                 </CardContent>
-              </Card>
-              </div>
-            </div>
-          </TabsContent>
+                </Card>
+              </motion.div>
 
-          <TabsContent value="coach" className="mt-0">
-            {!isCoach ? (
-              <Card className="rounded-2xl shadow-md">
+              <motion.div variants={cardMotion}>
+                <Card className="rounded-2xl shadow-md card-glass">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                    <SettingsIcon className="h-5 w-5" /> Coach mode
+                    <TrendingUp className="h-5 w-5" /> Progress
                   </CardTitle>
-                  <CardDescription>
-                    Turn on Coach Mode in Settings to unlock coach tools.
-                  </CardDescription>
+                  <CardDescription>Session completion and momentum.</CardDescription>
                 </CardHeader>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card className="rounded-2xl shadow-md">
+                <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="rounded-xl border p-3">
+                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                      Planned sets
+                    </div>
+                    <div className="text-2xl font-display">{sessionProgress.planned}</div>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                      Completed sets
+                    </div>
+                    <div className="text-2xl font-display">{sessionProgress.completed}</div>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                      Session progress
+                    </div>
+                    <div className="text-2xl font-display">{sessionProgress.pct}%</div>
+                  </div>
+                </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div variants={cardMotion}>
+                <Card className="rounded-2xl shadow-md card-glass">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                      <ClipboardList className="h-5 w-5" /> Send program
+                      <Trophy className="h-5 w-5" /> Trophies
                     </CardTitle>
-                    <CardDescription>
-                      Generate a coach package to share with your client.
-                    </CardDescription>
+                    <CardDescription>Celebrate milestones and gym wins.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <Button className="rounded-xl" onClick={buildCoachPackage}>
-                      Build coach package
-                    </Button>
-                    <textarea
-                      value={coachPackageText}
-                      readOnly
-                      className="min-h-[200px] w-full rounded-xl border bg-background p-3 text-sm"
-                      placeholder="Click “Build coach package” to generate JSON..."
-                    />
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        className="rounded-xl"
-                        onClick={async () => {
-                          try {
-                            if (navigator?.clipboard?.writeText) {
-                              await navigator.clipboard.writeText(coachPackageText || "");
-                              alert("Coach package copied to clipboard.");
-                              return;
-                            }
-                          } catch {}
-                          alert("Copy failed. Select the text and copy manually.");
-                        }}
-                      >
-                        Copy package
-                      </Button>
-                      <div className="text-xs text-muted-foreground">
-                        Client imports via Import → Paste JSON.
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="text-muted-foreground">
+                        Unlocked {unlockedCount}/{ACHIEVEMENTS.length}
                       </div>
+                      {latestAchievement ? (
+                        <div className="text-xs text-muted-foreground">
+                          Latest: {latestAchievement.title}
+                        </div>
+                      ) : null}
+                    </div>
+                    <motion.div
+                      variants={listMotion}
+                      className="grid grid-cols-1 sm:grid-cols-3 gap-2"
+                    >
+                      {achievementsList
+                        .slice()
+                        .sort((a, b) => Number(!!b.unlockedAt) - Number(!!a.unlockedAt))
+                        .slice(0, 3)
+                        .map((a) => {
+                          const Icon = a.icon;
+                          return (
+                            <motion.div
+                              key={a.id}
+                              variants={listItemMotion}
+                              className={`rounded-xl border p-3 ${
+                                a.unlockedAt ? "" : "opacity-60"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                                <Icon className="h-4 w-4" />
+                                {a.unlockedAt ? "Unlocked" : "Locked"}
+                              </div>
+                              <div className="mt-1 font-medium">{a.title}</div>
+                              <div className="text-xs text-muted-foreground">{a.description}</div>
+                            </motion.div>
+                          );
+                        })}
+                    </motion.div>
+                    <div className="text-xs text-muted-foreground">
+                      Unlock trophies by hitting PRs, stacking volume, and staying consistent.
                     </div>
                   </CardContent>
                 </Card>
+              </motion.div>
 
+              <motion.div variants={cardMotion}>
                 <Card className="rounded-2xl shadow-md">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                      <TrendingUp className="h-5 w-5" /> Client progress
+                      <CalendarDays className="h-5 w-5" /> Weekly overview
                     </CardTitle>
-                    <CardDescription>
-                      Paste a client export to view their summary.
-                    </CardDescription>
+                    <CardDescription>All assigned workouts and rest days.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <textarea
-                      value={clientImportText}
-                      onChange={(e) => setClientImportText(e.target.value)}
-                      className="min-h-[160px] w-full rounded-xl border bg-background p-3 text-sm"
-                      placeholder="Paste client export JSON here..."
-                    />
-                    <Button className="rounded-xl" onClick={importClientReport}>
-                      Load client report
-                    </Button>
-                    {clientSummary ? (
-                      <div className="rounded-xl border p-3 space-y-2">
-                        <div className="font-medium">{clientSummary.name}</div>
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div className="rounded-lg border p-2">
-                            Sessions: {clientSummary.totalSessions}
+                    <motion.div variants={listMotion} className="space-y-2">
+                      {WEEKDAYS.map((day) => (
+                        <motion.div
+                          key={day.key}
+                          variants={listItemMotion}
+                          className="rounded-xl border p-3"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                                {day.label}
+                              </div>
+                              <div className="text-lg font-display">
+                                {scheduledDayLabel(day.key)}
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="rounded-lg h-7 px-2 text-[11px]"
+                                onClick={() => toggleRestDay(day.key)}
+                              >
+                                {state.settings.schedule?.[day.key] === "rest" ? "Unset rest" : "Set rest"}
+                              </Button>
+                            </div>
                           </div>
-                          <div className="rounded-lg border p-2">
-                            Last: {clientSummary.lastLabel}
-                          </div>
-                          <div className="rounded-lg border p-2">
-                            7d Volume: {Math.round(clientSummary.vol7d).toLocaleString()}
-                          </div>
-                          <div className="rounded-lg border p-2">
-                            Total Volume: {Math.round(clientSummary.totalVolume).toLocaleString()}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground">
-                        Ask your client to Export data and paste it here.
-                      </div>
-                    )}
+                        </motion.div>
+                      ))}
+                    </motion.div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button className="rounded-xl" onClick={() => setSettingsDialogOpen(true)}>
+                        Edit schedule
+                      </Button>
+                      <Button variant="outline" className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
+                        Manage templates
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
-              </div>
-            )}
-          </TabsContent>
+              </motion.div>
+            </motion.div>
+            </TabsContent>
 
-          <TabsContent value="calc" className="mt-0">
-            <OneRmCalculator units={state.settings.units} />
-          </TabsContent>
-        </Tabs>
-      </div>
+            <TabsContent value="social" className="mt-0">
+              <motion.div variants={pageMotion} initial="hidden" animate="show" className="space-y-4">
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
+                        Community
+                      </div>
+                      <div className="text-3xl font-display uppercase">Social</div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button size="sm" variant="outline" className="rounded-full" onClick={() => setSocialFriendsOpen(true)}>
+                        <UserPlus className="h-4 w-4 mr-2" /> Friends
+                        {friendRequests.length ? (
+                          <Badge className="ml-2 rounded-full" variant="secondary">
+                            {friendRequests.length}
+                          </Badge>
+                        ) : null}
+                      </Button>
+                      <Button size="sm" variant="outline" className="rounded-full" onClick={() => setSocialMessagesOpen(true)}>
+                        <MessageCircle className="h-4 w-4 mr-2" /> Messages
+                      </Button>
+                      <Button size="sm" variant="outline" className="rounded-full" onClick={() => setSocialInvitesOpen(true)}>
+                        <Send className="h-4 w-4 mr-2" /> Invites
+                        {workoutInvites.length ? (
+                          <Badge className="ml-2 rounded-full" variant="secondary">
+                            {workoutInvites.length}
+                          </Badge>
+                        ) : null}
+                      </Button>
+                      <Button size="sm" variant="outline" className="rounded-full" onClick={() => setSocialChallengesOpen(true)}>
+                        <Trophy className="h-4 w-4 mr-2" /> Challenges
+                      </Button>
+                    </div>
+                  </div>
 
-      {activeTab === "log" ? (
-        <div className="fixed bottom-4 right-4 z-40 md:hidden">
-          <div className="rounded-full border border-foreground/15 bg-card/80 p-1 shadow-[0_12px_30px_rgba(0,0,0,0.3)] backdrop-blur">
-            <div className="flex items-center gap-1">
-              <Button
-                size="sm"
-                variant="outline"
-                className="rounded-full px-3 text-[0.65rem] uppercase tracking-[0.2em]"
-                onClick={() => {
-                  setLogMode("template");
-                  setGymMode((v) => !v);
-                  setGymStepIndex(0);
-                }}
-              >
-                {gymMode ? "Exit" : "Start"}
-              </Button>
-              <Button
-                size="sm"
-                className="rounded-full px-3 text-[0.65rem] uppercase tracking-[0.2em]"
-                onClick={saveSession}
-              >
-                Save
-              </Button>
-            </div>
+                  <div className="flex items-center gap-3 overflow-x-auto pb-2">
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center text-sm font-semibold">
+                        You
+                      </div>
+                      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                        You
+                      </div>
+                    </div>
+                    {friends.map((f) => (
+                      <div key={`story-${f.userId}`} className="flex flex-col items-center gap-1">
+                        <div className="h-12 w-12 rounded-full border border-primary/40 bg-card flex items-center justify-center text-sm font-semibold">
+                          {f.username.slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                          @{f.username}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <motion.div variants={listMotion} className="space-y-4">
+                  {socialFeed.length ? (
+                    socialFeed.map((post) => {
+                      const summary = socialPostSummary(post);
+                      const likeCount = postLikes[post.id]?.count || 0;
+                      const commentCount = (postComments[post.id] || []).length;
+                      return (
+                        <motion.article
+                          key={post.id}
+                          variants={listItemMotion}
+                          className="rounded-3xl border bg-card/80 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.18)]"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-sm font-semibold">
+                                {post.actor.slice(0, 1).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-semibold">@{post.actor}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {formatDate(post.createdAt)}
+                                </div>
+                              </div>
+                            </div>
+                            <Badge variant="secondary" className="rounded-full px-3 text-[10px] uppercase tracking-[0.2em]">
+                              {post.type.replace("_", " ")}
+                            </Badge>
+                          </div>
+                          <div className="mt-3">
+                            <div className="text-lg font-semibold">{summary.title}</div>
+                            <div className="text-sm text-muted-foreground">{summary.meta}</div>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                            <button
+                              type="button"
+                              className="flex items-center gap-2"
+                              onClick={() => toggleLike(post.id)}
+                            >
+                              <Heart className={`h-4 w-4 ${postLikes[post.id]?.liked ? "text-primary" : ""}`} />
+                              {likeCount} likes
+                            </button>
+                            <div>{commentCount} comments</div>
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            {(postComments[post.id] || []).slice(0, 2).map((c) => (
+                              <div key={c.id} className="text-xs text-muted-foreground">
+                                <span className="font-medium">@{c.author}</span> {c.body}
+                              </div>
+                            ))}
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={commentDrafts[post.id] || ""}
+                                onChange={(e) =>
+                                  setCommentDrafts((prev) => ({
+                                    ...prev,
+                                    [post.id]: e.target.value,
+                                  }))
+                                }
+                                placeholder="Add a comment..."
+                                className="h-9 text-sm"
+                              />
+                              <Button size="sm" variant="outline" className="rounded-xl" onClick={() => addComment(post.id)}>
+                                Send
+                              </Button>
+                            </div>
+                          </div>
+                        </motion.article>
+                      );
+                    })
+                  ) : (
+                    <motion.div variants={listItemMotion} className="rounded-3xl border bg-card/80 p-6 text-center">
+                      <div className="text-lg font-semibold">Your feed is empty</div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        Add friends to see workouts, PRs, and streaks here.
+                      </div>
+                    </motion.div>
+                  )}
+                </motion.div>
+
+                <Dialog open={socialFriendsOpen} onOpenChange={setSocialFriendsOpen}>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>Friends</DialogTitle>
+                      <DialogDescription>Search, accept requests, and manage your network.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label>Find friends by username</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            value={friendSearch}
+                            onChange={(e) => setFriendSearch(e.target.value)}
+                            placeholder="username"
+                          />
+                          <Button
+                            className="rounded-xl"
+                            onClick={async () => {
+                              if (!supabase || !friendSearch.trim()) return;
+                              const res = await supabase
+                                .from("profiles")
+                                .select("user_id, username")
+                                .ilike("username", friendSearch.trim());
+                              if (!res.error) {
+                                setFriendResults(
+                                  (res.data || [])
+                                    .filter((u: any) => u.user_id !== authUser?.id)
+                                    .map((u: any) => ({
+                                      userId: u.user_id,
+                                      username: u.username,
+                                    }))
+                                );
+                              }
+                            }}
+                          >
+                            Search
+                          </Button>
+                        </div>
+                        {friendResults.length ? (
+                          <div className="space-y-2">
+                            {friendResults.map((u) => (
+                              <div key={u.userId} className="flex items-center justify-between rounded-xl border p-2 text-sm">
+                                <span className="font-medium">@{u.username}</span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-xl"
+                                  onClick={async () => {
+                                    if (!supabase || !authUser) return;
+                                    await supabase.from("friend_requests").insert({
+                                      sender_id: authUser.id,
+                                      receiver_id: u.userId,
+                                    });
+                                  }}
+                                >
+                                  Add
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Friend requests</div>
+                        {friendRequests.length ? (
+                          <div className="space-y-2 text-sm">
+                            {friendRequests.map((req) => (
+                              <div key={req.id} className="flex items-center justify-between rounded-xl border p-2">
+                                <span className="font-medium">@{req.fromName}</span>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="rounded-xl"
+                                    onClick={() => acceptFriendRequest(req.id, req.userId)}
+                                  >
+                                    Accept
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-xl"
+                                    onClick={() => declineFriendRequest(req.id)}
+                                  >
+                                    Decline
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">No pending requests.</div>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Your friends</div>
+                        {friends.length ? (
+                          <div className="flex flex-wrap gap-2 text-sm">
+                            {friends.map((f) => (
+                              <div key={f.userId} className="rounded-full border px-3 py-1">
+                                @{f.username}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">Add a friend to see shared workouts.</div>
+                        )}
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={socialMessagesOpen} onOpenChange={setSocialMessagesOpen}>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>Messages</DialogTitle>
+                      <DialogDescription>Chat with your training partners.</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div className="rounded-xl border p-2 space-y-2">
+                        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                          Friends
+                        </div>
+                        {friends.length ? (
+                          <div className="space-y-1 text-sm">
+                            {friends.map((f) => (
+                              <button
+                                key={`msg-${f.userId}`}
+                                type="button"
+                                className="w-full text-left rounded-lg border px-2 py-1 hover:bg-muted/50"
+                                onClick={() => setSelectedMessageFriend(f)}
+                              >
+                                @{f.username}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">No friends yet.</div>
+                        )}
+                      </div>
+                      <div className="rounded-xl border p-2 space-y-2">
+                        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                          {selectedMessageFriend ? `Chat @${selectedMessageFriend.username}` : "Select a friend"}
+                        </div>
+                        <div className="max-h-40 overflow-y-auto space-y-1 text-xs">
+                          {messages.length ? (
+                            messages.map((m) => (
+                              <div key={m.id} className="rounded-lg border px-2 py-1">
+                                <span className="font-medium">@{m.from}</span> {m.body}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-xs text-muted-foreground">No messages yet.</div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={messageDraft}
+                            onChange={(e) => setMessageDraft(e.target.value)}
+                            placeholder="Send a message"
+                            className="h-8 text-xs"
+                          />
+                          <Button
+                            size="sm"
+                            className="rounded-xl h-8 px-2 text-[11px]"
+                            onClick={async () => {
+                              if (!supabase || !authUser || !selectedMessageFriend) return;
+                              const body = messageDraft.trim();
+                              if (!body) return;
+                              const res = await supabase.from("messages").insert({
+                                sender_id: authUser.id,
+                                recipient_id: selectedMessageFriend.userId,
+                                body,
+                              }).select("id, body, created_at, sender:profiles(username)").single();
+                              if (!res.error && res.data) {
+                                setMessages((prev) => [
+                                  {
+                                    id: res.data.id,
+                                    from: res.data.sender?.username || "You",
+                                    body: res.data.body,
+                                    createdAt: res.data.created_at,
+                                  },
+                                  ...prev,
+                                ]);
+                                setMessageDraft("");
+                              }
+                            }}
+                            disabled={!selectedMessageFriend}
+                          >
+                            Send
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={socialInvitesOpen} onOpenChange={setSocialInvitesOpen}>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>Workout invites</DialogTitle>
+                      <DialogDescription>Join a friend’s live workout.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                      {workoutInvites.length ? (
+                        <div className="space-y-2">
+                          {workoutInvites.map((invite) => (
+                            <div key={invite.id} className="rounded-xl border p-2 text-sm">
+                              <div className="font-medium">@{invite.fromName}</div>
+                              <div className="text-xs text-muted-foreground">
+                                Invited you to {invite.template?.name || "a workout"}
+                              </div>
+                              <div className="mt-2 flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  className="rounded-xl"
+                                  onClick={async () => {
+                                    if (!supabase || !authUser) return;
+                                    const template = invite.template as Template;
+                                    const freshTemplate: Template = {
+                                      ...template,
+                                      id: uid(),
+                                      exercises: (template.exercises || []).map((ex) => ({
+                                        ...ex,
+                                        id: uid(),
+                                      })),
+                                      source: "custom",
+                                    };
+                                    setState((p) => ({
+                                      ...p,
+                                      templates: [freshTemplate, ...p.templates],
+                                    }));
+                                    setSelectedTemplateId(freshTemplate.id);
+                                    await supabase
+                                      .from("workout_invites")
+                                      .update({ status: "accepted" })
+                                      .eq("id", invite.id);
+                                    setWorkoutInvites((prev) => prev.filter((i) => i.id !== invite.id));
+                                    startWorkout();
+                                  }}
+                                >
+                                  Join
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-xl"
+                                  onClick={async () => {
+                                    if (!supabase) return;
+                                    await supabase
+                                      .from("workout_invites")
+                                      .update({ status: "declined" })
+                                      .eq("id", invite.id);
+                                    setWorkoutInvites((prev) => prev.filter((i) => i.id !== invite.id));
+                                  }}
+                                >
+                                  Decline
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">No invites yet.</div>
+                      )}
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={socialChallengesOpen} onOpenChange={setSocialChallengesOpen}>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>Challenges</DialogTitle>
+                      <DialogDescription>Start a weekly challenge with friends.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_auto] gap-2">
+                        <Input
+                          value={challengeTitle}
+                          onChange={(e) => setChallengeTitle(e.target.value)}
+                          placeholder="Challenge name"
+                        />
+                        <Select value={challengeType} onValueChange={(v) => setChallengeType(v as any)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Challenge type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="volume">Weekly volume</SelectItem>
+                            <SelectItem value="workouts">Weekly workouts</SelectItem>
+                            <SelectItem value="prs">Monthly PRs</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        className="rounded-xl"
+                        onClick={async () => {
+                          if (!supabase || !authUser) return;
+                          const title = challengeTitle.trim() || "Challenge";
+                          const today = new Date();
+                          const start = today.toISOString().slice(0, 10);
+                          const end = new Date(
+                            today.getTime() + (challengeType === "prs" ? 30 : 7) * 24 * 60 * 60 * 1000
+                          )
+                            .toISOString()
+                            .slice(0, 10);
+                          const res = await supabase
+                            .from("challenges")
+                            .insert({ creator_id: authUser.id, title, type: challengeType, start_date: start, end_date: end })
+                            .select("id")
+                            .single();
+                          if (res.error) return;
+                          await supabase.from("challenge_participants").insert({
+                            challenge_id: res.data.id,
+                            user_id: authUser.id,
+                          });
+                          setChallengeTitle("");
+                        }}
+                      >
+                        Create challenge
+                      </Button>
+                      {challenges.length ? (
+                        <div className="space-y-2 text-sm">
+                          {challenges.map((c) => (
+                            <div key={c.id} className="rounded-xl border p-2 flex items-center justify-between">
+                              <div>
+                                <div className="font-medium">{c.title}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {c.type} • {c.start} → {c.end}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant={c.joined ? "secondary" : "outline"}
+                                  className="rounded-xl"
+                                  onClick={async () => {
+                                    if (!supabase || !authUser) return;
+                                    if (c.joined) return;
+                                    await supabase.from("challenge_participants").insert({
+                                      challenge_id: c.id,
+                                      user_id: authUser.id,
+                                    });
+                                    setChallenges((prev) =>
+                                      prev.map((x) => (x.id === c.id ? { ...x, joined: true } : x))
+                                    );
+                                  }}
+                                >
+                                  {c.joined ? "Joined" : "Join"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-xl"
+                                  onClick={async () => {
+                                    if (!supabase || !authUser) return;
+                                    const ids = [authUser.id, ...friends.map((f) => f.userId)];
+                                    const sessionsRes = await supabase
+                                      .from("user_sessions")
+                                      .select("user_id, session")
+                                      .in("user_id", ids);
+                                    if (sessionsRes.error) return;
+                                    const scores: Record<string, number> = {};
+                                    for (const row of sessionsRes.data || []) {
+                                      const s = row.session as Session;
+                                      if (s.dateISO < c.start || s.dateISO > c.end) continue;
+                                      if (!scores[row.user_id]) scores[row.user_id] = 0;
+                                      if (c.type === "workouts") scores[row.user_id] += 1;
+                                      if (c.type === "volume") {
+                                        for (const e of s.entries) {
+                                          for (const set of e.sets) {
+                                            scores[row.user_id] += (Number(set.weight) || 0) * (Number(set.reps) || 0);
+                                          }
+                                        }
+                                      }
+                                      if (c.type === "prs") {
+                                        const maxWeight = Math.max(0, ...s.entries.map((e) => Math.max(0, ...e.sets.map((set) => Number(set.weight) || 0))));
+                                        if (maxWeight > 0) scores[row.user_id] += 1;
+                                      }
+                                    }
+                                    const leaderboard = ids.map((id) => {
+                                      const friend = friends.find((f) => f.userId === id);
+                                      const name = id === authUser.id ? "You" : friend?.username || "Athlete";
+                                      return { username: name, score: scores[id] || 0 };
+                                    });
+                                    leaderboard.sort((a, b) => b.score - a.score);
+                                    setChallengeLeaders((prev) => ({ ...prev, [c.id]: leaderboard }));
+                                  }}
+                                >
+                                  Leaderboard
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                          {challenges.map((c) =>
+                            challengeLeaders[c.id] ? (
+                              <div key={`${c.id}-leaderboard`} className="rounded-xl border p-2">
+                                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                                  {c.title} leaderboard
+                                </div>
+                                <div className="mt-2 space-y-1 text-xs">
+                                  {challengeLeaders[c.id].map((entry, idx) => (
+                                    <div key={`${c.id}-${entry.username}`} className="flex items-center justify-between">
+                                      <span>
+                                        {idx + 1}. {entry.username}
+                                      </span>
+                                      <span className="text-muted-foreground">{entry.score}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">No active challenges yet.</div>
+                      )}
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </motion.div>
+            </TabsContent>
+
+            <TabsContent value="profile" className="mt-0">
+              <motion.div variants={pageMotion} initial="hidden" animate="show" className="space-y-4">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
+                    My profile
+                  </div>
+                  <div className="text-3xl font-display uppercase">Profile</div>
+                </div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-minimal">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <User className="h-5 w-5" /> Sharing
+                      </CardTitle>
+                      <CardDescription>Control what shows up in your social feed.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {[
+                        { key: "shareWorkouts", label: "Share workouts" },
+                        { key: "sharePRs", label: "Share PRs" },
+                        { key: "shareWeighIns", label: "Share weigh-ins" },
+                        { key: "shareTrophies", label: "Share trophies" },
+                        { key: "shareGoals", label: "Share goals" },
+                        { key: "shareStreaks", label: "Share streaks" },
+                      ].map((item) => (
+                        <div key={item.key} className="flex items-center justify-between gap-3 rounded-xl border p-2">
+                          <div className="text-sm">{item.label}</div>
+                          <Switch
+                            checked={!!(state.settings.profile as any)[item.key]}
+                            onCheckedChange={(v) =>
+                              updateProfile({ [item.key]: v } as Partial<Profile>)
+                            }
+                          />
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <ClipboardList className="h-5 w-5" /> My workouts
+                      </CardTitle>
+                      <CardDescription>Build workouts, create splits, and manage templates.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-wrap gap-2">
+                      <Button className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
+                        Manage templates
+                      </Button>
+                      <Button variant="outline" className="rounded-xl" onClick={() => setGeneratorOpen(true)}>
+                        Generate workouts
+                      </Button>
+                      <Button variant="outline" className="rounded-xl" onClick={() => setImportDialogOpen(true)}>
+                        Import data
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <CalendarDays className="h-5 w-5" /> Weekly split
+                      </CardTitle>
+                      <CardDescription>Switch between saved splits and weekly programs.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {Object.keys(state.savedSplits || {}).length ? (
+                        <div className="space-y-2">
+                          {Object.entries(state.savedSplits || {}).map(([key, templates]) => {
+                            const daysForSplit = scheduledDayOptions.length
+                              ? scheduledDayOptions.map((d) => d.key)
+                              : WEEKDAYS.filter((d) => d.index !== 0).map((d) => d.key);
+                            const source =
+                              templates?.[0]?.source === "custom_split" ? "custom_split" : "generated";
+                            return (
+                              <div key={key} className="rounded-xl border p-3 text-sm">
+                                <div className="font-medium">{formatSplitLabel(key)}</div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {templates.length} templates saved
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="rounded-xl"
+                                    onClick={() =>
+                                      replaceProgramTemplates(
+                                        templates,
+                                        daysForSplit as Weekday[],
+                                        key,
+                                        source
+                                      )
+                                    }
+                                  >
+                                    Use this split
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">
+                          No saved splits yet. Generate one to get started.
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {!isCoach ? (
+                  <motion.div variants={cardMotion}>
+                    <Card className="rounded-2xl shadow-md card-glass">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Sparkles className="h-5 w-5" /> Coach access
+                        </CardTitle>
+                        <CardDescription>
+                          Connect to your coach and import assigned programs.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="space-y-2">
+                          <Label>Coach email</Label>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <Input
+                              value={coachLinkEmail}
+                              onChange={(e) => setCoachLinkEmail(e.target.value)}
+                              placeholder="coach@email.com"
+                            />
+                            <Button
+                              className="rounded-xl"
+                              onClick={async () => {
+                                if (!supabase || !authUser) return;
+                                const email = coachLinkEmail.trim();
+                                if (!email) return;
+                                const coachRes = await supabase
+                                  .from("profiles")
+                                  .select("user_id, role")
+                                  .eq("email", email)
+                                  .single();
+                                if (coachRes.error || coachRes.data?.role !== "coach") {
+                                  alert("Coach not found.");
+                                  return;
+                                }
+                                await supabase.from("coach_clients").insert({
+                                  coach_id: coachRes.data.user_id,
+                                  athlete_id: authUser.id,
+                                  athlete_email: authUser.email,
+                                });
+                                alert("Coach linked. Ask them to assign your program.");
+                                setCoachLinkEmail("");
+                              }}
+                            >
+                              Connect
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="rounded-xl border p-3 space-y-2">
+                          <div className="text-sm font-medium">Coach assignments</div>
+                          {athleteAssignments.length ? (
+                            <div className="space-y-2">
+                              {athleteAssignments.map((item) => (
+                                <div key={item.id} className="flex items-center justify-between text-sm">
+                                  <span className="font-medium">{item.template.name}</span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-xl"
+                                    onClick={() => {
+                                      const freshTemplate: Template = {
+                                        ...item.template,
+                                        id: uid(),
+                                        exercises: (item.template.exercises || []).map((ex) => ({
+                                          ...ex,
+                                          id: uid(),
+                                        })),
+                                        source: "coach",
+                                      };
+                                      setState((p) => ({
+                                        ...p,
+                                        templates: [freshTemplate, ...p.templates],
+                                      }));
+                                      setSelectedTemplateId(freshTemplate.id);
+                                      alert("Template added to your library.");
+                                    }}
+                                  >
+                                    Add
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">
+                              No assignments yet.
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ) : null}
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Dumbbell className="h-5 w-5" /> Create your own split
+                      </CardTitle>
+                      <CardDescription>
+                        Build a custom weekly split and save it for later.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <Input
+                        value={customSplitName}
+                        onChange={(e) => setCustomSplitName(e.target.value)}
+                        placeholder="Split name (e.g., Lift & Sculpt)"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        {WEEKDAYS.filter((d) => d.index !== 0).map((day) => (
+                          <Button
+                            key={day.key}
+                            type="button"
+                            size="sm"
+                            variant={customSplitDays.includes(day.key) ? "secondary" : "outline"}
+                            className="rounded-xl"
+                            onClick={() => toggleCustomSplitDay(day.key)}
+                          >
+                            {day.short}
+                          </Button>
+                        ))}
+                      </div>
+                      <Button
+                        className="rounded-xl w-full"
+                        onClick={() => {
+                          if (!customSplitDays.length) {
+                            alert("Pick at least one day first.");
+                            return;
+                          }
+                          const name = customSplitName.trim() || "My Split";
+                          const splitKey = `custom|${name}|${customSplitDays.join("-") || "days"}`;
+                          const templates = customSplitDays.map((day, idx) => {
+                            const label =
+                              WEEKDAYS.find((d) => d.key === day)?.label || `Day ${idx + 1}`;
+                            return {
+                              id: uid(),
+                              name: `${name} • ${label}`,
+                              exercises: [],
+                            } as Template;
+                          });
+                          replaceProgramTemplates(templates, customSplitDays, splitKey, "custom_split");
+                        }}
+                      >
+                        Create custom split
+                      </Button>
+                      <div className="text-xs text-muted-foreground">
+                        Your split is saved locally. You can switch back anytime.
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-minimal">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Trophy className="h-5 w-5" /> Trophy cabinet
+                      </CardTitle>
+                      <CardDescription>Track every milestone you unlock.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="text-sm text-muted-foreground">
+                        Unlocked {unlockedCount}/{ACHIEVEMENTS.length}
+                      </div>
+                      <motion.div variants={listMotion} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {achievementsList
+                          .slice()
+                          .sort((a, b) => Number(!!b.unlockedAt) - Number(!!a.unlockedAt))
+                          .map((a) => {
+                            const Icon = a.icon;
+                            return (
+                              <motion.div
+                                key={a.id}
+                                variants={listItemMotion}
+                                className={`rounded-xl border p-3 ${
+                                  a.unlockedAt ? "" : "opacity-60"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                                    <Icon className="h-4 w-4" />
+                                    {a.unlockedAt ? "Unlocked" : "Locked"}
+                                  </div>
+                                  {a.unlockedAt ? (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {formatDate(a.unlockedAt)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-1 font-medium">{a.title}</div>
+                                <div className="text-xs text-muted-foreground">{a.description}</div>
+                              </motion.div>
+                            );
+                          })}
+                      </motion.div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </motion.div>
+            </TabsContent>
+
+            <TabsContent value="more" className="mt-0">
+              <motion.div variants={pageMotion} initial="hidden" animate="show" className="space-y-4">
+                <div>
+                <div className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
+                  Tools & settings
+                </div>
+                <div className="text-3xl font-display uppercase">More</div>
+                </div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-minimal">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                    <SettingsIcon className="h-5 w-5" /> Controls
+                  </CardTitle>
+                  <CardDescription>Manage templates, themes, and exports.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <motion.div variants={listMotion} className="contents">
+                    <motion.div variants={listItemMotion}>
+                      <Button className="rounded-xl" onClick={() => setSettingsDialogOpen(true)}>
+                        Account & settings
+                      </Button>
+                    </motion.div>
+                    <motion.div variants={listItemMotion}>
+                      <Button variant="outline" className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
+                        Workout templates
+                      </Button>
+                    </motion.div>
+                    <motion.div variants={listItemMotion}>
+                      <Button variant="outline" className="rounded-xl" onClick={() => setGeneratorOpen(true)}>
+                        Generate workouts
+                      </Button>
+                    </motion.div>
+                    <motion.div variants={listItemMotion}>
+                      <Button variant="outline" className="rounded-xl" onClick={() => setImportDialogOpen(true)}>
+                        Import data
+                      </Button>
+                    </motion.div>
+                    <motion.div variants={listItemMotion}>
+                      <Button variant="outline" className="rounded-xl" onClick={exportData}>
+                        Export data
+                      </Button>
+                    </motion.div>
+                  </motion.div>
+                </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                    <History className="h-5 w-5" /> Training history
+                  </CardTitle>
+                  <CardDescription>Search and review past sessions.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="relative">
+                    <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
+                    <Input
+                      className="pl-9"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search templates, dates, exercises…"
+                    />
+                  </div>
+                  {filteredSessions.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No sessions yet.</div>
+                  ) : (
+                    <motion.div variants={listMotion} className="space-y-3">
+                      {filteredSessions.map((s) => (
+                        <motion.div key={s.id} variants={listItemMotion}>
+                          <SessionCard
+                            session={s}
+                            units={state.settings.units}
+                            onDelete={() => deleteSession(s.id)}
+                          />
+                        </motion.div>
+                      ))}
+                    </motion.div>
+                  )}
+                </CardContent>
+                  </Card>
+                </motion.div>
+
+              {isCoach ? (
+                <motion.div variants={listMotion} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <motion.div variants={cardMotion}>
+                    <Card className="rounded-2xl shadow-md">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <ClipboardList className="h-5 w-5" /> Coach clients
+                      </CardTitle>
+                      <CardDescription>
+                        Add clients and assign templates in one place.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex flex-col gap-2">
+                        <Label>Invite client by email</Label>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Input
+                            value={coachInviteEmail}
+                            onChange={(e) => setCoachInviteEmail(e.target.value)}
+                            placeholder="client@email.com"
+                          />
+                          <Button
+                            className="rounded-xl"
+                            onClick={async () => {
+                              if (!supabase || !authUser) return;
+                              const email = coachInviteEmail.trim();
+                              if (!email) return;
+                              await supabase.from("coach_clients").insert({
+                                coach_id: authUser.id,
+                                athlete_email: email,
+                              });
+                              setCoachInviteEmail("");
+                              const res = await supabase
+                                .from("coach_clients")
+                                .select("athlete_id, athlete_email")
+                                .eq("coach_id", authUser.id);
+                              if (!res.error) {
+                                setCoachClients(
+                                  (res.data || []).map((c: any) => ({
+                                    athleteId: c.athlete_id,
+                                    email: c.athlete_email,
+                                  }))
+                                );
+                              }
+                            }}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      </div>
+                      {coachClients.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">
+                          No clients yet. Add an email to invite someone.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {coachClients.map((c) => (
+                            <div key={c.email} className="rounded-xl border p-3 text-sm">
+                              <div className="font-medium">{c.email}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {c.athleteId ? "Connected" : "Pending connection"}
+                              </div>
+                              <div className="mt-2 flex items-center gap-2">
+                                <Select
+                                  onValueChange={async (v) => {
+                                    const template = state.templates.find((t) => t.id === v);
+                                    if (!template || !supabase || !authUser) return;
+                                    if (!c.athleteId) {
+                                      alert("Client hasn't connected yet.");
+                                      return;
+                                    }
+                                    await supabase.from("coach_assignments").insert({
+                                      coach_id: authUser.id,
+                                      athlete_id: c.athleteId,
+                                      template_id: template.id,
+                                      template_name: template.name,
+                                      template,
+                                    });
+                                    const assignRes = await supabase
+                                      .from("coach_assignments")
+                                      .select("id, athlete_id, template_name")
+                                      .eq("coach_id", authUser.id)
+                                      .order("created_at", { ascending: false })
+                                      .limit(6);
+                                    if (!assignRes.error) {
+                                      setCoachAssignments(
+                                        (assignRes.data || []).map((a: any) => ({
+                                          id: a.id,
+                                          athleteId: a.athlete_id,
+                                          templateName: a.template_name,
+                                        }))
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="Assign template" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {state.templates.map((t) => (
+                                      <SelectItem key={t.id} value={t.id}>
+                                        {t.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  variant="outline"
+                                  className="rounded-xl"
+                                  onClick={async () => {
+                                    if (!supabase || !c.athleteId) return;
+                                    const sessionsRes = await supabase
+                                      .from("user_sessions")
+                                      .select("session")
+                                      .eq("user_id", c.athleteId);
+                                    if (sessionsRes.error) return;
+                                    const sessions = (sessionsRes.data || []).map(
+                                      (row: any) => row.session as Session
+                                    );
+                                    const stats = buildSessionStats(sessions);
+                                    setCoachClientProgress({
+                                      athleteId: c.athleteId,
+                                      sessions: stats.totalSessions,
+                                      lastDate: stats.lastLabel,
+                                      volume7d: stats.vol7d,
+                                    });
+                                  }}
+                                  disabled={!c.athleteId}
+                                >
+                                  View progress
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                    </Card>
+                  </motion.div>
+
+                  <motion.div variants={cardMotion}>
+                    <Card className="rounded-2xl shadow-md">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <TrendingUp className="h-5 w-5" /> Coach insights
+                      </CardTitle>
+                      <CardDescription>
+                        See client progress and recent assignments.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {coachClientProgress ? (
+                        <div className="rounded-xl border p-3 space-y-2">
+                        <div className="text-sm font-medium">Client summary</div>
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div className="rounded-lg border p-2">
+                              Sessions: {coachClientProgress.sessions}
+                            </div>
+                            <div className="rounded-lg border p-2">
+                              Last: {coachClientProgress.lastDate}
+                            </div>
+                            <div className="rounded-lg border p-2">
+                              7d Volume: {Math.round(coachClientProgress.volume7d).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">
+                          Pick a connected client and click “View progress”.
+                        </div>
+                      )}
+                      <div className="rounded-xl border p-3 space-y-2">
+                        <div className="text-sm font-medium">Recent assignments</div>
+                        {coachAssignments.length ? (
+                          <div className="space-y-2 text-sm">
+                            {coachAssignments.map((a) => (
+                              <div key={a.id} className="flex items-center justify-between">
+                                <span className="font-medium">{a.templateName}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {a.athleteId ? "Assigned" : "Pending"}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">No assignments yet.</div>
+                        )}
+                      </div>
+                    </CardContent>
+                    </Card>
+                  </motion.div>
+                </motion.div>
+              ) : null}
+            </motion.div>
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-foreground/10 bg-card/95 backdrop-blur">
+          <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-4">
+            <button
+              type="button"
+              className={`flex min-w-[64px] flex-col items-center gap-1 text-[0.65rem] uppercase tracking-[0.2em] ${
+                activeTab === "dashboard" ? "text-foreground" : "text-muted-foreground"
+              }`}
+              onClick={() => setActiveTab("dashboard")}
+            >
+              <Home className="h-5 w-5" />
+              Home
+            </button>
+            <button
+              type="button"
+              className={`flex min-w-[64px] flex-col items-center gap-1 text-[0.65rem] uppercase tracking-[0.2em] ${
+                activeTab === "social" ? "text-foreground" : "text-muted-foreground"
+              }`}
+              onClick={() => setActiveTab("social")}
+            >
+              <Heart className="h-5 w-5" />
+              Social
+            </button>
+
+            <button
+              type="button"
+              className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_18px_36px_rgba(0,0,0,0.35)] ring-1 ring-primary/40"
+              onClick={startWorkout}
+            >
+              <Play className="h-7 w-7" />
+            </button>
+
+            <button
+              type="button"
+              className={`flex min-w-[64px] flex-col items-center gap-1 text-[0.65rem] uppercase tracking-[0.2em] ${
+                activeTab === "profile" ? "text-foreground" : "text-muted-foreground"
+              }`}
+              onClick={() => setActiveTab("profile")}
+            >
+              <User className="h-5 w-5" />
+              Profile
+            </button>
+            <button
+              type="button"
+              className={`flex min-w-[64px] flex-col items-center gap-1 text-[0.65rem] uppercase tracking-[0.2em] ${
+                activeTab === "more" ? "text-foreground" : "text-muted-foreground"
+              }`}
+              onClick={() => setActiveTab("more")}
+            >
+              <MoreHorizontal className="h-5 w-5" />
+              More
+            </button>
           </div>
         </div>
-      ) : null}
+      </div>
+    </div>
+  );
+}
+// -------------------- Components --------------------
+
+function WeightSlider({
+  value,
+  onChange,
+  units,
+  step,
+}: {
+  value: string | number;
+  onChange: (next: string) => void;
+  units: Units;
+  step?: number;
+}) {
+  const { step: sliderStep, max } = getWeightSliderConfig(units);
+  const raw = Number(value) || 0;
+  const sliderValue = Math.min(Math.max(raw, 0), max);
+  const snap = (v: number) => Math.round(v / sliderStep) * sliderStep;
+  const applyValue = (v: number) => {
+    const next = Math.min(Math.max(snap(v), 0), max);
+    const formatted = Number.isInteger(next) ? String(next) : next.toFixed(1);
+    onChange(formatted);
+  };
+  const ticks = Array.from({ length: 41 }).map((_, i) => {
+    const pct = i / 40;
+    const value = Math.round((max * pct) / 2.5) * 2.5;
+    const isMajor = i % 5 === 0;
+    return { key: i, value, isMajor };
+  });
+  return (
+    <div className="rounded-2xl border border-foreground/10 bg-background/60 p-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
+          Weight
+        </div>
+        <div className="text-sm font-semibold">
+          {sliderValue}
+          {units}
+        </div>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          className="h-8 w-8 rounded-xl"
+          onClick={() => applyValue(sliderValue - sliderStep)}
+          aria-label="Decrease weight"
+        >
+          –
+        </Button>
+        <input
+          type="range"
+          min={0}
+          max={max}
+          step={sliderStep}
+          value={sliderValue}
+          onChange={(e) => applyValue(Number(e.target.value))}
+          className="w-full accent-primary"
+        />
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          className="h-8 w-8 rounded-xl"
+          onClick={() => applyValue(sliderValue + sliderStep)}
+          aria-label="Increase weight"
+        >
+          +
+        </Button>
+      </div>
+      <div className="mt-3 flex items-end justify-between">
+        {ticks.map((tick) => (
+          <div key={tick.key} className="flex flex-col items-center">
+            <span
+              className={`inline-flex w-[2px] ${
+                tick.isMajor ? "h-3 bg-foreground/50" : "h-2 bg-foreground/25"
+              }`}
+            />
+            {tick.isMajor ? (
+              <span className="mt-1 text-[10px] text-muted-foreground">
+                {tick.value}
+              </span>
+            ) : null}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
+function BigWeightSlider({
+  value,
+  onChange,
+  units,
+}: {
+  value: string | number;
+  onChange: (next: string) => void;
+  units: Units;
+}) {
+  const { step: sliderStep, max } = getWeightSliderConfig(units);
+  const raw = Number(value) || 0;
+  const sliderValue = Math.min(Math.max(raw, 0), max);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const draggingRef = useRef(false);
+  const snap = (v: number) => Math.round(v / sliderStep) * sliderStep;
+  const applyValue = (v: number) => {
+    const next = Math.min(Math.max(snap(v), 0), max);
+    const formatted = Number.isInteger(next) ? String(next) : next.toFixed(1);
+    onChange(formatted);
+  };
+  const pxPerUnit = 6;
+  const majorEvery = 25 * pxPerUnit;
+  const rulerStyle: React.CSSProperties = {
+    backgroundImage: `repeating-linear-gradient(90deg, rgba(255,255,255,0.6) 0 4px, transparent 4px ${majorEvery}px)`,
+    backgroundPositionX: "0px",
+  };
+  const lastClientXRef = useRef(0);
+  const lastTsRef = useRef(0);
+  const rawValueRef = useRef(sliderValue);
+  const momentumRef = useRef(0);
 
-// -------------------- Components --------------------
+  useEffect(() => {
+    if (draggingRef.current) return;
+    rawValueRef.current = sliderValue;
+  }, [sliderValue]);
+
+  const setFromClientX = useCallback(
+    (clientX: number, ts?: number) => {
+      const rect = trackRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      if (!ts) {
+        const nextValue = ((clientX - rect.left) / rect.width) * max;
+        applyValue(nextValue);
+        return;
+      }
+      const dx = clientX - lastClientXRef.current;
+      const dt = Math.max(1, ts - lastTsRef.current);
+      lastClientXRef.current = clientX;
+      lastTsRef.current = ts;
+
+      const sensitivity = 15 / rect.width;
+      const speed = Math.min(Math.abs(dx / dt) / 1.8, 1);
+      const decay = dt * 0.001;
+      momentumRef.current = Math.max(0, momentumRef.current - decay);
+      if (speed > 0.7) {
+        momentumRef.current = Math.min(1.35, momentumRef.current + speed * 0.16);
+      }
+      const boost = 1 + momentumRef.current;
+      rawValueRef.current = rawValueRef.current - dx * sensitivity * boost;
+      applyValue(rawValueRef.current);
+    },
+    [max]
+  );
+  return (
+    <div className="relative rounded-[28px] border border-foreground/10 bg-card/70 p-6 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+      <div className="text-center text-[10px] uppercase tracking-[0.4em] text-muted-foreground">
+        Weight
+      </div>
+      <motion.div
+        key={sliderValue}
+        initial={{ y: 8, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className="mt-2 text-center text-4xl font-display text-foreground"
+      >
+        {sliderValue}
+        <span className="text-sm text-muted-foreground ml-2">{units}</span>
+      </motion.div>
+      <div
+        ref={trackRef}
+        className="relative mt-6 h-24 overflow-hidden rounded-2xl border border-foreground/10 bg-muted/40"
+        style={{ touchAction: "none" }}
+        onMouseDown={(e) => {
+          draggingRef.current = true;
+          rawValueRef.current = sliderValue;
+          lastClientXRef.current = e.clientX;
+          lastTsRef.current = performance.now();
+          setFromClientX(e.clientX, lastTsRef.current);
+          const onMove = (ev: MouseEvent) => {
+            if (!draggingRef.current) return;
+            setFromClientX(ev.clientX, performance.now());
+          };
+          const onUp = () => {
+            draggingRef.current = false;
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+          };
+          window.addEventListener("mousemove", onMove);
+          window.addEventListener("mouseup", onUp);
+        }}
+        onTouchStart={(e) => {
+          draggingRef.current = true;
+          const clientX = e.touches[0]?.clientX ?? 0;
+          rawValueRef.current = sliderValue;
+          lastClientXRef.current = clientX;
+          lastTsRef.current = performance.now();
+          setFromClientX(clientX, lastTsRef.current);
+        }}
+        onTouchMove={(e) => {
+          if (!draggingRef.current) return;
+          e.preventDefault();
+          setFromClientX(e.touches[0]?.clientX ?? 0, performance.now());
+        }}
+        onTouchEnd={() => {
+          draggingRef.current = false;
+        }}
+      >
+        <motion.div
+          className="absolute inset-y-0 left-[-200%] w-[500%] pointer-events-none"
+          style={rulerStyle}
+          animate={{ x: `calc(${-sliderValue * pxPerUnit}px + 28px)` }}
+          transition={{ type: "spring", stiffness: 90, damping: 18, mass: 0.9 }}
+        />
+        <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent,rgba(0,0,0,0.45))]" />
+        <div className="absolute inset-y-0 left-1/2 w-[2px] bg-foreground/80 pointer-events-none" />
+        <div className="absolute -top-1 left-1/2 -translate-x-1/2 h-2 w-2 rotate-45 rounded-[2px] bg-foreground/80 pointer-events-none" />
+      </div>
+    </div>
+  );
+}
+
+function BigMetricSlider({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  suffix,
+  compact = false,
+  tickOffset = 10,
+  tickEvery,
+}: {
+  label: string;
+  value: string | number;
+  onChange: (next: string) => void;
+  min: number;
+  max: number;
+  step: number;
+  suffix?: string;
+  compact?: boolean;
+  tickOffset?: number;
+  tickEvery?: number;
+}) {
+  const raw = Number(value) || 0;
+  const sliderValue = Math.min(Math.max(raw, min), max);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const draggingRef = useRef(false);
+  const rawValueRef = useRef(sliderValue);
+  const lastClientXRef = useRef(0);
+  const lastTsRef = useRef(0);
+
+  useEffect(() => {
+    if (draggingRef.current) return;
+    rawValueRef.current = sliderValue;
+  }, [sliderValue]);
+
+  const snap = (v: number) => Math.round(v / step) * step;
+  const applyValue = (v: number) => {
+    const next = Math.min(Math.max(snap(v), min), max);
+    const formatted = Number.isInteger(next) ? String(next) : next.toFixed(1);
+    onChange(formatted);
+  };
+
+  const pxPerUnit = 3;
+  const majorEvery = (tickEvery ?? 5) * pxPerUnit;
+  const minorEveryUnits = Math.max(step, (tickEvery ?? step) / 5);
+  const minorEvery = minorEveryUnits * pxPerUnit;
+  const rulerStyle: React.CSSProperties = {
+    backgroundImage: `repeating-linear-gradient(90deg, rgba(255,255,255,0.25) 0 1px, transparent 1px ${minorEvery}px), repeating-linear-gradient(90deg, rgba(255,255,255,0.6) 0 3px, transparent 3px ${majorEvery}px)`,
+  };
+  const rulerWidth = (max - min) * pxPerUnit + 1200;
+
+  const setFromClientX = useCallback(
+    (clientX: number, ts?: number) => {
+      const rect = trackRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      if (!ts) {
+        const pct = (clientX - rect.left) / rect.width;
+        applyValue(min + pct * (max - min));
+        return;
+      }
+      const dx = clientX - lastClientXRef.current;
+      lastClientXRef.current = clientX;
+      lastTsRef.current = ts;
+      const sensitivity = 15 / rect.width;
+      rawValueRef.current = rawValueRef.current - dx * sensitivity;
+      applyValue(rawValueRef.current);
+    },
+    [max, min, step]
+  );
+
+  return (
+    <div
+      className={`relative rounded-[20px] border border-foreground/10 bg-card/70 shadow-[0_14px_30px_rgba(0,0,0,0.2)] ${
+        compact ? "p-3" : "p-4"
+      }`}
+    >
+      <div className="text-center text-[10px] uppercase tracking-[0.35em] text-muted-foreground">
+        {label}
+      </div>
+      <motion.div
+        key={sliderValue}
+        initial={{ y: 6, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+        className={`mt-1 text-center font-display text-foreground ${
+          compact ? "text-2xl" : "text-3xl"
+        }`}
+      >
+        {sliderValue}
+        {suffix ? <span className="text-sm text-muted-foreground ml-2">{suffix}</span> : null}
+      </motion.div>
+      <div
+        ref={trackRef}
+        className={`relative mt-3 overflow-hidden rounded-2xl border border-foreground/10 bg-muted/40 ${
+          compact ? "h-12" : "h-16"
+        }`}
+        style={{ touchAction: "none" }}
+        onMouseDown={(e) => {
+          draggingRef.current = true;
+          rawValueRef.current = sliderValue;
+          lastClientXRef.current = e.clientX;
+          lastTsRef.current = performance.now();
+          setFromClientX(e.clientX, lastTsRef.current);
+          const onMove = (ev: MouseEvent) => {
+            if (!draggingRef.current) return;
+            setFromClientX(ev.clientX, performance.now());
+          };
+          const onUp = () => {
+            draggingRef.current = false;
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+          };
+          window.addEventListener("mousemove", onMove);
+          window.addEventListener("mouseup", onUp);
+        }}
+        onTouchStart={(e) => {
+          draggingRef.current = true;
+          const clientX = e.touches[0]?.clientX ?? 0;
+          rawValueRef.current = sliderValue;
+          lastClientXRef.current = clientX;
+          lastTsRef.current = performance.now();
+          setFromClientX(clientX, lastTsRef.current);
+        }}
+        onTouchMove={(e) => {
+          if (!draggingRef.current) return;
+          e.preventDefault();
+          setFromClientX(e.touches[0]?.clientX ?? 0, performance.now());
+        }}
+        onTouchEnd={() => {
+          draggingRef.current = false;
+        }}
+      >
+        <motion.div
+          className="absolute inset-y-0 pointer-events-none"
+          style={{
+            ...rulerStyle,
+            width: rulerWidth,
+            left: `calc(50% - ${rulerWidth / 2}px)`,
+          }}
+          animate={{ x: `calc(${-sliderValue * pxPerUnit}px + ${tickOffset}px)` }}
+          transition={{ type: "spring", stiffness: 90, damping: 18, mass: 0.9 }}
+        />
+        <div className="absolute inset-y-0 left-1/2 w-[2px] bg-foreground/80 pointer-events-none" />
+      </div>
+    </div>
+  );
+}
+
+function WeightTrendGraph({
+  points,
+  units,
+}: {
+  points: Array<{ dateISO: string; weight: number }>;
+  units: Units;
+}) {
+  if (!points.length) return null;
+  const width = 320;
+  const height = 140;
+  const padding = 14;
+  const sorted = [...points].sort((a, b) => String(a.dateISO).localeCompare(String(b.dateISO)));
+  const weights = sorted.map((p) => p.weight);
+  const min = Math.min(...weights);
+  const max = Math.max(...weights);
+  const range = Math.max(1, max - min);
+  const toX = (i: number) =>
+    padding + (i / Math.max(1, sorted.length - 1)) * (width - padding * 2);
+  const toY = (w: number) =>
+    padding + (1 - (w - min) / range) * (height - padding * 2);
+
+  const path = sorted
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(i)} ${toY(p.weight)}`)
+    .join(" ");
+  const area = `${path} L ${toX(sorted.length - 1)} ${height - padding} L ${toX(0)} ${
+    height - padding
+  } Z`;
+
+  return (
+    <div className="rounded-2xl border border-foreground/15 bg-card/80 p-3">
+      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+        Weight trend
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="mt-2 w-full h-32">
+        <defs>
+          <linearGradient id="weightTrendFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="rgba(255,122,24,0.35)" />
+            <stop offset="100%" stopColor="rgba(255,122,24,0)" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill="url(#weightTrendFill)" />
+        <path d={path} fill="none" stroke="rgba(255,122,24,0.9)" strokeWidth="3" />
+        {sorted.map((p, i) => (
+          <circle key={p.dateISO} cx={toX(i)} cy={toY(p.weight)} r="3.5" fill="#ff7a18" />
+        ))}
+      </svg>
+      <div className="mt-1 text-[11px] text-muted-foreground">
+        Range: {min.toFixed(1)}–{max.toFixed(1)} {units}
+      </div>
+    </div>
+  );
+}
 
 
 function ExerciseLogger({
@@ -3777,6 +7183,7 @@ function ExerciseLogger({
     templateHint?.setType === "superset" || templateHint?.setType === "triset"
       ? templateHint?.supersetTag || "A"
       : "A";
+  const showWeight = !templateHint?.timeUnit;
   const repsLabel =
     templateHint?.timeUnit === "seconds"
       ? "Seconds"
@@ -3913,7 +7320,7 @@ function ExerciseLogger({
             {suggestion?.next && !dismissed ? (
               <div className="text-right">
                 <Badge variant="secondary" className="rounded-xl">
-                  Coach suggests: {suggestion.next.weight}
+                  Smart Trainer suggests: {suggestion.next.weight}
                   {units} × {suggestion.next.reps}
                 </Badge>
                 <div className="text-xs text-muted-foreground mt-1 max-w-[240px]">
@@ -3974,19 +7381,40 @@ function ExerciseLogger({
               <div className="col-span-1 text-sm font-medium">{i + 1}</div>
 
               <div className="col-span-2">
-                <Input
-                  className="w-full"
-                  inputMode="decimal"
-                  value={s.weight}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    onChange({
-                      ...entry,
-                      sets: entry.sets.map((x, xi) => (xi === i ? { ...x, weight: v } : x)),
-                    });
-                  }}
-                  placeholder="0"
-                />
+                {showWeight ? (
+                  <div className="space-y-1">
+                    <Input
+                      className="w-full"
+                      inputMode="decimal"
+                      value={s.weight}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        onChange({
+                          ...entry,
+                          sets: entry.sets.map((x, xi) =>
+                            xi === i ? { ...x, weight: v } : x
+                          ),
+                        });
+                      }}
+                      placeholder="0"
+                    />
+                    <WeightSlider
+                      value={s.weight}
+                      units={units}
+                      step={templateHint?.weightStep}
+                      onChange={(v) =>
+                        onChange({
+                          ...entry,
+                          sets: entry.sets.map((x, xi) =>
+                            xi === i ? { ...x, weight: v } : x
+                          ),
+                        })
+                      }
+                    />
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground">Timed</div>
+                )}
               </div>
 
               <div className="col-span-2">
@@ -4138,18 +7566,26 @@ function ExerciseLogger({
                 </Button>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <Input
-                  inputMode="decimal"
-                  value={s.weight}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    onChange({
-                      ...entry,
-                      sets: entry.sets.map((x, xi) => (xi === i ? { ...x, weight: v } : x)),
-                    });
-                  }}
-                  placeholder={`Weight (${units})`}
-                />
+                {showWeight ? (
+                  <Input
+                    inputMode="decimal"
+                    value={s.weight}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      onChange({
+                        ...entry,
+                        sets: entry.sets.map((x, xi) =>
+                          xi === i ? { ...x, weight: v } : x
+                        ),
+                      });
+                    }}
+                    placeholder={`Weight (${units})`}
+                  />
+                ) : (
+                  <div className="rounded-xl border border-foreground/10 bg-background/70 p-2 text-xs text-muted-foreground">
+                    Timed
+                  </div>
+                )}
                 <Input
                   inputMode="numeric"
                   value={s.reps}
@@ -4176,6 +7612,23 @@ function ExerciseLogger({
                   placeholder="RPE"
                 />
               </div>
+              {showWeight ? (
+                <div className="mt-1">
+                  <WeightSlider
+                    value={s.weight}
+                    units={units}
+                    step={templateHint?.weightStep}
+                    onChange={(v) =>
+                      onChange({
+                        ...entry,
+                        sets: entry.sets.map((x, xi) =>
+                          xi === i ? { ...x, weight: v } : x
+                        ),
+                      })
+                    }
+                  />
+                </div>
+              ) : null}
               <div className="flex items-center gap-2">
                 <Select
                   value={s.setType || "normal"}
@@ -4365,6 +7818,16 @@ function SupersetLogger({
           placeholder="RPE"
         />
       </div>
+      {entry.templateHint?.timeUnit ? null : (
+        <div className="mt-2">
+          <WeightSlider
+            value={set.weight}
+            units={units}
+            step={entry.templateHint?.weightStep}
+            onChange={(v) => updateSet(entry, idx, { weight: v })}
+          />
+        </div>
+      )}
       <Input
         className="mt-2"
         value={set.notes || ""}
@@ -4488,6 +7951,16 @@ function TrisetLogger({
           placeholder="RPE"
         />
       </div>
+      {entry.templateHint?.timeUnit ? null : (
+        <div className="mt-2">
+          <WeightSlider
+            value={set.weight}
+            units={units}
+            step={entry.templateHint?.weightStep}
+            onChange={(v) => updateSet(entry, idx, { weight: v })}
+          />
+        </div>
+      )}
       <Input
         className="mt-2"
         value={set.notes || ""}
@@ -4841,6 +8314,18 @@ function GetStartedScreen({ onStart }: { onStart: () => void }) {
             <div className="absolute inset-0 bg-black/30" />
           </div>
           <div className="relative z-10 w-full max-w-xl space-y-5 rounded-3xl border border-foreground/20 bg-background/85 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.4)] backdrop-blur">
+            <div className="flex flex-wrap items-center gap-3">
+              <img
+                src="/branding/forge-fitness-icon-1024.png"
+                alt="Forge Fitness icon"
+                className="h-10 w-10 rounded-xl border border-primary/30 bg-black"
+              />
+              <img
+                src="/branding/forge-fitness-logo-transparent.png"
+                alt="Forge Fitness"
+                className="h-8 w-auto"
+              />
+            </div>
             <div className="inline-flex items-center gap-2 rounded-full border border-foreground/20 px-4 py-2 text-xs uppercase tracking-[0.3em] text-muted-foreground">
               Forge Fitness • Iron Edition
             </div>
@@ -4918,7 +8403,13 @@ function OnboardingScreen({
   onComplete,
 }: {
   settings: Settings;
-  onComplete: (profile: Profile, templates: Template[], days: Weekday[]) => void;
+  onComplete: (
+    profile: Profile,
+    templates: Template[],
+    days: Weekday[],
+    meta: { splitKey: string; source: "generated" },
+    role: UserRole
+  ) => void;
 }) {
   const [profile, setProfile] = useState<Profile>(() => ({
     ...settings.profile,
@@ -4926,6 +8417,7 @@ function OnboardingScreen({
   }));
   const [error, setError] = useState("");
   const [step, setStep] = useState(0);
+  const [role, setRole] = useState<UserRole>(settings.role || "athlete");
   const [focus, setFocus] = useState<FocusType>("hypertrophy");
   const [split, setSplit] = useState<SplitType>("ppl");
   const [scheduledDays, setScheduledDays] = useState<Weekday[]>(["mon", "wed", "fri"]);
@@ -4949,11 +8441,25 @@ function OnboardingScreen({
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   };
+  const ageValue = clamp(Number(profile.age) || 25, 10, 80);
   const heightValue = parseHeight(profile.height);
   const heightFeet = Math.floor(heightValue / 12) || 5;
   const heightRemainder = heightValue ? Math.round(heightValue % 12) : 0;
-  const heightMeters = Math.floor(heightValue / 100) || 1;
-  const heightCmRemainder = heightValue ? Math.round(heightValue % 100) : 0;
+  const heightSliderValue =
+    settings.units === "kg"
+      ? clamp(heightValue || 175, 140, 210)
+      : clamp(heightValue || 68, 54, 82);
+  const weightValue = Number(profile.weight) || 0;
+  const weightSliderValue =
+    settings.units === "kg"
+      ? clamp(weightValue || 80, 40, 200)
+      : clamp(weightValue || 180, 80, 400);
+  const genderStyle: GenderStyle =
+    profile.gender === "female"
+      ? "glute"
+      : profile.gender === "male"
+      ? "mass"
+      : "neutral";
   const daysPerWeek = scheduledDays.length || 1;
   const toggleDay = (key: Weekday) => {
     setScheduledDays((prev) => {
@@ -4983,6 +8489,14 @@ function OnboardingScreen({
       setError(`Enter your ${weightLabel.toLowerCase()}.`);
       return;
     }
+    if (!profile.birthdate) {
+      setError("Add your birthday.");
+      return;
+    }
+    if (!profile.gender) {
+      setError("Select a gender.");
+      return;
+    }
     if (!scheduledDays.length) {
       setError("Pick at least one training day.");
       return;
@@ -4991,6 +8505,14 @@ function OnboardingScreen({
     setIsGenerating(true);
     setError("");
     window.setTimeout(() => {
+      const splitKey = buildSplitKey({
+        split,
+        focus,
+        experience: "intermediate",
+        daysPerWeek,
+        style: genderStyle,
+        includeDeload: false,
+      });
       const templates = generateProgramTemplates({
         experience: "intermediate",
         split,
@@ -4999,8 +8521,13 @@ function OnboardingScreen({
         includeCore: true,
         includeCardio: focus === "fat_loss",
         units: settings.units,
+        style: genderStyle,
+        includeDeload: false,
       });
-      onComplete({ ...profile, completed: true }, templates, scheduledDays);
+      onComplete({ ...profile, completed: true }, templates, scheduledDays, {
+        splitKey,
+        source: "generated",
+      }, role);
     }, 900);
   };
 
@@ -5026,6 +8553,10 @@ function OnboardingScreen({
         setError(`Enter your ${weightLabel.toLowerCase()}.`);
         return;
       }
+      if (!profile.birthdate) {
+        setError("Add your birthday.");
+        return;
+      }
     }
 
     if (step === 2 && !scheduledDays.length) {
@@ -5034,7 +8565,7 @@ function OnboardingScreen({
     }
 
     setError("");
-    if (step >= 2) {
+    if (step >= 3) {
       handleSubmit();
       return;
     }
@@ -5059,6 +8590,18 @@ function OnboardingScreen({
       <div className="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center px-4 py-12">
         <Card className="w-full">
           <CardHeader>
+            <div className="flex flex-wrap items-center gap-3">
+              <img
+                src="/branding/forge-fitness-icon-1024.png"
+                alt="Forge Fitness icon"
+                className="h-9 w-9 rounded-xl border border-primary/30 bg-black"
+              />
+              <img
+                src="/branding/forge-fitness-logo-transparent.png"
+                alt="Forge Fitness"
+                className="h-7 w-auto"
+              />
+            </div>
             <CardTitle className="text-2xl font-display uppercase tracking-[0.3em]">
               Enter The App
             </CardTitle>
@@ -5069,13 +8612,13 @@ function OnboardingScreen({
           <CardContent className="flex flex-col gap-4 min-h-[520px]">
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-muted-foreground uppercase tracking-[0.3em]">
-                <span>Step {step + 1} of 3</span>
-                <span>{Math.round(((step + 1) / 3) * 100)}%</span>
+                <span>Step {step + 1} of 4</span>
+                <span>{Math.round(((step + 1) / 4) * 100)}%</span>
               </div>
               <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                 <div
                   className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${((step + 1) / 3) * 100}%` }}
+                  style={{ width: `${((step + 1) / 4) * 100}%` }}
                 />
               </div>
             </div>
@@ -5095,6 +8638,22 @@ function OnboardingScreen({
                     />
                   </div>
                   <div className="space-y-1">
+                    <Label>Gender</Label>
+                    <Select
+                      value={profile.gender || ""}
+                      onValueChange={(v) => setProfile((p) => ({ ...p, gender: v as Profile["gender"] }))}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="male">Male</SelectItem>
+                        <SelectItem value="female">Female</SelectItem>
+                        <SelectItem value="prefer_not">Prefer not to say</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
                     <Label>Age</Label>
                     <Input
                       inputMode="numeric"
@@ -5102,129 +8661,89 @@ function OnboardingScreen({
                       onChange={(e) => setProfile((p) => ({ ...p, age: e.target.value }))}
                       placeholder="e.g. 24"
                     />
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                        <span>10</span>
+                        <span>{ageValue}</span>
+                        <span>80</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={10}
+                        max={80}
+                        step={1}
+                        value={ageValue}
+                        onChange={(e) =>
+                          setProfile((p) => ({ ...p, age: e.target.value }))
+                        }
+                        className="w-full accent-primary"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Birthday</Label>
+                    <Input
+                      type="date"
+                      value={profile.birthdate}
+                      onChange={(e) => setProfile((p) => ({ ...p, birthdate: e.target.value }))}
+                    />
+                    <div className="text-[10px] text-muted-foreground">
+                      Used for birthday rewards and training milestones.
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <Label>{heightLabel}</Label>
-                    {settings.units === "kg" ? (
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={String(heightMeters)}
-                          onValueChange={(v) =>
-                            setProfile((p) => ({
-                              ...p,
-                              height: String(Number(v) * 100 + heightCmRemainder),
-                            }))
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {[1, 2, 3].map((meters) => (
-                              <SelectItem key={meters} value={String(meters)}>
-                                {meters} m
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Select
-                          value={String(heightCmRemainder)}
-                          onValueChange={(v) =>
-                            setProfile((p) => ({
-                              ...p,
-                              height: String(heightMeters * 100 + Number(v)),
-                            }))
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Array.from({ length: 100 }).map((_, i) => (
-                              <SelectItem key={i} value={String(i)}>
-                                {i} cm
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                        <span>{settings.units === "kg" ? "140" : "4'6"}</span>
+                        <span>
+                          {settings.units === "kg"
+                          ? `${heightSliderValue} cm`
+                          : `${heightFeet} ft ${heightRemainder} in`}
+                        </span>
+                        <span>{settings.units === "kg" ? "210" : "6'10"}</span>
                       </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={String(heightFeet)}
-                          onValueChange={(v) =>
-                            setProfile((p) => ({
-                              ...p,
-                              height: String(Number(v) * 12 + heightRemainder),
-                            }))
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Array.from({ length: 5 }).map((_, i) => {
-                              const feet = i + 4;
-                              return (
-                                <SelectItem key={feet} value={String(feet)}>
-                                  {feet} ft
-                                </SelectItem>
-                              );
-                            })}
-                          </SelectContent>
-                        </Select>
-                        <Select
-                          value={String(heightRemainder)}
-                          onValueChange={(v) =>
-                            setProfile((p) => ({
-                              ...p,
-                              height: String(heightFeet * 12 + Number(v)),
-                            }))
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Array.from({ length: 12 }).map((_, i) => (
-                              <SelectItem key={i} value={String(i)}>
-                                {i} in
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
+                      <input
+                        type="range"
+                        min={settings.units === "kg" ? 140 : 54}
+                        max={settings.units === "kg" ? 210 : 82}
+                        step={1}
+                        value={heightSliderValue}
+                        onChange={(e) =>
+                          setProfile((p) => ({
+                            ...p,
+                            height: e.target.value,
+                          }))
+                        }
+                        className="w-full accent-primary"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <Label>{weightLabel}</Label>
-                    {settings.units === "kg" ? (
-                      <Select
-                        value={profile.weight || "80"}
-                        onValueChange={(v) => setProfile((p) => ({ ...p, weight: v }))}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Array.from({ length: 171 }).map((_, i) => {
-                            const kg = i + 30;
-                            return (
-                              <SelectItem key={kg} value={String(kg)}>
-                                {kg} kg
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input
-                        inputMode="decimal"
-                        value={profile.weight}
-                        onChange={(e) => setProfile((p) => ({ ...p, weight: e.target.value }))}
-                        placeholder="e.g. 180"
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                        <span>{settings.units === "kg" ? "40" : "80"}</span>
+                        <span>
+                          {weightSliderValue} {settings.units}
+                        </span>
+                        <span>{settings.units === "kg" ? "200" : "400"}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={settings.units === "kg" ? 40 : 80}
+                        max={settings.units === "kg" ? 200 : 400}
+                        step={1}
+                        value={weightSliderValue}
+                        onChange={(e) =>
+                          setProfile((p) => ({
+                            ...p,
+                            weight: e.target.value,
+                          }))
+                        }
+                        className="w-full accent-primary"
                       />
-                    )}
+                    </div>
                   </div>
                 </div>
                 </div>
@@ -5232,9 +8751,61 @@ function OnboardingScreen({
 
               {step === 1 ? (
                 <div className="rounded-xl border p-3 space-y-3">
+                  <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                    Step 2 • Role
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      {
+                        key: "athlete",
+                        title: "Athlete",
+                        desc: "Train, track, and follow programs built for you.",
+                      },
+                      {
+                        key: "smart_trainer",
+                        title: "Smart Trainer",
+                        desc: "App-powered guidance, cues, and adaptive suggestions.",
+                      },
+                      {
+                        key: "coach",
+                        title: "Coach",
+                        desc: "Manage clients, templates, and progress insights.",
+                      },
+                    ].map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => setRole(item.key as UserRole)}
+                        className={`rounded-2xl border p-4 text-left transition ${
+                          role === item.key
+                            ? "border-primary/60 bg-primary/10"
+                            : "hover:bg-muted/40"
+                        }`}
+                      >
+                        <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                          {item.key === "coach"
+                            ? "Coach mode"
+                            : item.key === "smart_trainer"
+                            ? "Smart Trainer mode"
+                            : "Athlete mode"}
+                        </div>
+                        <div className="mt-2 text-lg font-display uppercase">
+                          {item.title}
+                        </div>
+                        <div className="text-sm text-muted-foreground mt-1">
+                          {item.desc}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {step === 2 ? (
+                <div className="rounded-xl border p-3 space-y-3">
                 <div>
                   <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
-                    Step 2 • Training goal
+                    Step 3 • Training goal
                   </div>
                   <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {(
@@ -5270,10 +8841,10 @@ function OnboardingScreen({
                 </div>
               ) : null}
 
-              {step === 2 ? (
+              {step === 3 ? (
                 <div className="rounded-xl border p-3 space-y-3">
                 <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
-                  Step 3 • Training type
+                  Step 4 • Training type
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -5346,7 +8917,7 @@ function OnboardingScreen({
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Building your plan...
                   </>
-                ) : step === 2 ? (
+                ) : step === 3 ? (
                   "Enter App"
                 ) : (
                   "Continue"
@@ -5363,13 +8934,27 @@ function OnboardingScreen({
 function SettingsPanel({
   settings,
   templates,
+  authEmail,
+  syncStatus,
+  lastSyncAt,
+  syncError,
+  onSyncNow,
+  onSignOut,
   onChange,
   onResetRequest,
+  onDeleteAccountRequest,
 }: {
   settings: Settings;
   templates: Template[];
+  authEmail?: string;
+  syncStatus?: "idle" | "syncing" | "success" | "error";
+  lastSyncAt?: string | null;
+  syncError?: string;
+  onSyncNow?: () => void;
+  onSignOut?: () => void;
   onChange: (s: Settings) => void;
   onResetRequest: () => void;
+  onDeleteAccountRequest: () => void;
 }) {
   const heightLabel = settings.units === "kg" ? "Height (cm)" : "Height";
   const weightLabel = `Bodyweight (${settings.units})`;
@@ -5377,19 +8962,29 @@ function SettingsPanel({
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   };
+  const ageValue = clamp(Number(settings.profile.age) || 25, 10, 80);
   const heightValue = parseHeight(settings.profile.height);
   const heightFeet = Math.floor(heightValue / 12) || 5;
   const heightRemainder = heightValue ? Math.round(heightValue % 12) : 0;
-  const heightMeters = Math.floor(heightValue / 100) || 1;
-  const heightCmRemainder = heightValue ? Math.round(heightValue % 100) : 0;
+  const heightSliderValue =
+    settings.units === "kg"
+      ? clamp(heightValue || 175, 140, 210)
+      : clamp(heightValue || 68, 54, 82);
+  const weightValue = Number(settings.profile.weight) || 0;
+  const weightSliderValue =
+    settings.units === "kg"
+      ? clamp(weightValue || 80, 40, 200)
+      : clamp(weightValue || 180, 80, 400);
   const updateProfile = (partial: Partial<Profile>) => {
     const nextProfile = { ...settings.profile, ...partial };
     const completed =
       nextProfile.completed ||
-      (!!nextProfile.name.trim() &&
-        Number(nextProfile.age) > 0 &&
-        Number(nextProfile.height) > 0 &&
-        Number(nextProfile.weight) > 0);
+              (!!nextProfile.name.trim() &&
+                Number(nextProfile.age) > 0 &&
+                Number(nextProfile.height) > 0 &&
+                Number(nextProfile.weight) > 0 &&
+                !!nextProfile.birthdate &&
+                !!nextProfile.gender);
     onChange({ ...settings, profile: { ...nextProfile, completed } });
   };
 
@@ -5401,6 +8996,17 @@ function SettingsPanel({
         <div className="space-y-2">
           <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Profile</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="space-y-1 md:col-span-2">
+              <Label>Username</Label>
+              <Input
+                value={settings.profile.username || ""}
+                onChange={(e) => updateProfile({ username: e.target.value })}
+                placeholder="forgeathlete"
+              />
+              <div className="text-xs text-muted-foreground">
+                Used for friends search and your social profile.
+              </div>
+            </div>
             <div className="space-y-1">
               <Label>Name</Label>
               <Input
@@ -5410,6 +9016,22 @@ function SettingsPanel({
               />
             </div>
             <div className="space-y-1">
+              <Label>Gender</Label>
+              <Select
+                value={settings.profile.gender || ""}
+                onValueChange={(v) => updateProfile({ gender: v as Profile["gender"] })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">Male</SelectItem>
+                  <SelectItem value="female">Female</SelectItem>
+                  <SelectItem value="prefer_not">Prefer not to say</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>Age</Label>
               <Input
                 inputMode="numeric"
@@ -5417,118 +9039,193 @@ function SettingsPanel({
                 onChange={(e) => updateProfile({ age: e.target.value })}
                 placeholder="e.g. 24"
               />
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span>10</span>
+                  <span>{ageValue}</span>
+                  <span>80</span>
+                </div>
+                <input
+                  type="range"
+                  min={10}
+                  max={80}
+                  step={1}
+                  value={ageValue}
+                  onChange={(e) => updateProfile({ age: e.target.value })}
+                  className="w-full accent-primary"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Birthday</Label>
+              <Input
+                type="date"
+                value={settings.profile.birthdate}
+                onChange={(e) => updateProfile({ birthdate: e.target.value })}
+              />
+              <div className="text-[10px] text-muted-foreground">
+                Unlocks birthday rewards inside Forge Fitness.
+              </div>
             </div>
             <div className="space-y-1">
               <Label>{heightLabel}</Label>
-              {settings.units === "kg" ? (
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={String(heightMeters)}
-                    onValueChange={(v) =>
-                      updateProfile({ height: String(Number(v) * 100 + heightCmRemainder) })
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[1, 2, 3].map((meters) => (
-                        <SelectItem key={meters} value={String(meters)}>
-                          {meters} m
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={String(heightCmRemainder)}
-                    onValueChange={(v) =>
-                      updateProfile({ height: String(heightMeters * 100 + Number(v)) })
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 100 }).map((_, i) => (
-                        <SelectItem key={i} value={String(i)}>
-                          {i} cm
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="mt-2 space-y-1">
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span>{settings.units === "kg" ? "140" : "4'6"}</span>
+                  <span>
+                    {settings.units === "kg"
+                      ? `${heightSliderValue} cm`
+                      : `${heightFeet} ft ${heightRemainder} in`}
+                  </span>
+                  <span>{settings.units === "kg" ? "210" : "6'10"}</span>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={String(heightFeet)}
-                    onValueChange={(v) =>
-                      updateProfile({ height: String(Number(v) * 12 + heightRemainder) })
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 5 }).map((_, i) => {
-                        const feet = i + 4;
-                        return (
-                          <SelectItem key={feet} value={String(feet)}>
-                            {feet} ft
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={String(heightRemainder)}
-                    onValueChange={(v) =>
-                      updateProfile({ height: String(heightFeet * 12 + Number(v)) })
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 12 }).map((_, i) => (
-                        <SelectItem key={i} value={String(i)}>
-                          {i} in
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+                <input
+                  type="range"
+                  min={settings.units === "kg" ? 140 : 54}
+                  max={settings.units === "kg" ? 210 : 82}
+                  step={1}
+                  value={heightSliderValue}
+                  onChange={(e) => updateProfile({ height: e.target.value })}
+                  className="w-full accent-primary"
+                />
+              </div>
             </div>
             <div className="space-y-1">
               <Label>{weightLabel}</Label>
-              {settings.units === "kg" ? (
-                <Select
-                  value={settings.profile.weight || "80"}
-                  onValueChange={(v) => updateProfile({ weight: v })}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 171 }).map((_, i) => {
-                      const kg = i + 30;
-                      return (
-                        <SelectItem key={kg} value={String(kg)}>
-                          {kg} kg
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input
-                  inputMode="decimal"
-                  value={settings.profile.weight}
+              <div className="mt-2 space-y-1">
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span>{settings.units === "kg" ? "40" : "80"}</span>
+                  <span>
+                    {weightSliderValue} {settings.units}
+                  </span>
+                  <span>{settings.units === "kg" ? "200" : "400"}</span>
+                </div>
+                <input
+                  type="range"
+                  min={settings.units === "kg" ? 40 : 80}
+                  max={settings.units === "kg" ? 200 : 400}
+                  step={1}
+                  value={weightSliderValue}
                   onChange={(e) => updateProfile({ weight: e.target.value })}
-                  placeholder="e.g. 180"
+                  className="w-full accent-primary"
                 />
-              )}
+              </div>
             </div>
+          </div>
+        </div>
+
+        <Separator />
+
+        {authEmail && onSignOut ? (
+          <>
+            <div className="space-y-2">
+              <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Account</div>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-medium text-sm">Signed in</div>
+                  <div className="text-xs text-muted-foreground">{authEmail}</div>
+                </div>
+                <Button variant="outline" className="rounded-xl" onClick={onSignOut}>
+                  Sign out
+                </Button>
+              </div>
+            </div>
+
+            <Separator />
+          </>
+        ) : null}
+
+        {onSyncNow ? (
+          <>
+            <div className="space-y-2">
+              <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Sync</div>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-medium text-sm">Cloud sync</div>
+                  <div className="text-xs text-muted-foreground">
+                    {syncStatus === "syncing"
+                      ? "Syncing now..."
+                      : syncStatus === "error"
+                      ? syncError || "Sync failed"
+                      : lastSyncAt
+                      ? `Last sync ${formatDate(lastSyncAt)}`
+                      : "Ready to sync"}
+                  </div>
+                </div>
+                <Button variant="outline" className="rounded-xl" onClick={onSyncNow}>
+                  Sync now
+                </Button>
+              </div>
+            </div>
+
+            <Separator />
+          </>
+        ) : null}
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Role</div>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-medium text-sm">Account type</div>
+              <div className="text-xs text-muted-foreground">
+                Smart Trainer is the in-app guidance. Coaches manage clients and programming.
+              </div>
+            </div>
+            <div className="inline-flex rounded-xl border bg-background p-1">
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm rounded-lg transition ${
+                  settings.role === "athlete" ? "bg-muted" : "hover:bg-muted/60"
+                }`}
+                onClick={() => onChange({ ...settings, role: "athlete" })}
+              >
+                Athlete
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm rounded-lg transition ${
+                  settings.role === "smart_trainer" ? "bg-muted" : "hover:bg-muted/60"
+                }`}
+                onClick={() => onChange({ ...settings, role: "smart_trainer" })}
+              >
+                Smart Trainer
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm rounded-lg transition ${
+                  settings.role === "coach" ? "bg-muted" : "hover:bg-muted/60"
+                }`}
+                onClick={() => onChange({ ...settings, role: "coach" })}
+              >
+                Coach
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Sharing</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {[
+              { key: "shareWorkouts", label: "Share workouts" },
+              { key: "sharePRs", label: "Share PRs" },
+              { key: "shareWeighIns", label: "Share weigh-ins" },
+              { key: "shareTrophies", label: "Share trophies" },
+              { key: "shareGoals", label: "Share goals" },
+              { key: "shareStreaks", label: "Share streaks" },
+            ].map((item) => (
+              <div key={item.key} className="flex items-center justify-between gap-3 rounded-xl border p-2">
+                <div className="text-sm">{item.label}</div>
+                <Switch
+                  checked={!!(settings.profile as any)[item.key]}
+                  onCheckedChange={(v) =>
+                    updateProfile({ [item.key]: v } as Partial<Profile>)
+                  }
+                />
+              </div>
+            ))}
           </div>
         </div>
 
@@ -5634,20 +9331,26 @@ function SettingsPanel({
 
         <div className="space-y-2">
           <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Training rules</div>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="font-medium text-sm">Coach mode</div>
-              <div className="text-xs text-muted-foreground">
-                Unlock coach tools for sending programs and tracking clients.
+          {settings.role !== "coach" ? (
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-medium text-sm">Smart Trainer guidance</div>
+                <div className="text-xs text-muted-foreground">
+                  Toggle app-powered cues and adaptive suggestions.
+                </div>
               </div>
+              <Switch
+                checked={settings.role === "smart_trainer"}
+                onCheckedChange={(v) =>
+                  onChange({ ...settings, role: v ? "smart_trainer" : "athlete" })
+                }
+              />
             </div>
-            <Switch
-              checked={settings.role === "coach"}
-              onCheckedChange={(v) =>
-                onChange({ ...settings, role: v ? "coach" : "athlete" })
-              }
-            />
-          </div>
+          ) : (
+            <div className="rounded-xl border p-2 text-xs text-muted-foreground">
+              Coach tools enabled. Athletes can still connect to you via your email.
+            </div>
+          )}
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="font-medium text-sm">Strict rep range</div>
@@ -5706,6 +9409,17 @@ function SettingsPanel({
             <Trash2 className="h-4 w-4" />
             Reset all data
           </Button>
+          <div className="text-xs text-muted-foreground">
+            Deleting your account removes your cloud data and signs you out.
+          </div>
+          <Button
+            variant="destructive"
+            className="w-full rounded-xl"
+            onClick={onDeleteAccountRequest}
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete account
+          </Button>
         </div>
       </div>
     </div>
@@ -5716,13 +9430,22 @@ function ProgramGeneratorDialog({
   open,
   onOpenChange,
   units,
+  gender,
+  savedSplits,
   onGenerate,
   onAddCoachSplit,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   units: Units;
-  onGenerate: (templates: Template[], days: Weekday[]) => void;
+  gender?: Profile["gender"];
+  savedSplits: Record<string, Template[]>;
+  onGenerate: (payload: {
+    templates: Template[];
+    days: Weekday[];
+    splitKey: string;
+    source: "generated" | "custom_split";
+  }) => void;
   onAddCoachSplit: (templates: Template[], days: Weekday[]) => void;
 }) {
   const [experience, setExperience] = useState<ExperienceLevel>("beginner");
@@ -5731,6 +9454,7 @@ function ProgramGeneratorDialog({
   const [focus, setFocus] = useState<FocusType>("general");
   const [includeCore, setIncludeCore] = useState(true);
   const [includeCardio, setIncludeCardio] = useState(false);
+  const [includeDeload, setIncludeDeload] = useState(false);
   const [scheduledDays, setScheduledDays] = useState<Weekday[]>(["mon", "wed", "fri"]);
   const [coachDays, setCoachDays] = useState<Weekday[]>([
     "mon",
@@ -5747,6 +9471,8 @@ function ProgramGeneratorDialog({
     athletic: "Power, speed, and performance.",
     general: "Balanced mix for overall fitness.",
   };
+  const genderStyle: GenderStyle =
+    gender === "female" ? "glute" : gender === "male" ? "mass" : "neutral";
 
   const sortDays = (days: Weekday[]) =>
     WEEKDAYS.filter((d) => days.includes(d.key)).map((d) => d.key);
@@ -5766,6 +9492,7 @@ function ProgramGeneratorDialog({
     setFocus("general");
     setIncludeCore(true);
     setIncludeCardio(false);
+    setIncludeDeload(false);
     setScheduledDays(["mon", "wed", "fri"]);
     setCoachDays(["mon", "tue", "wed", "thu", "fri", "sat"]);
   }, [open]);
@@ -5784,7 +9511,18 @@ function ProgramGeneratorDialog({
     setScheduledDays((prev) => (prev.length ? prev : defaults));
   }, [daysPerWeek]);
 
+  const splitKey = buildSplitKey({
+    split,
+    focus,
+    experience,
+    daysPerWeek,
+    style: genderStyle,
+    includeDeload,
+  });
+  const savedTemplates = savedSplits?.[splitKey];
+
   const preview = useMemo(() => {
+    if (savedTemplates?.length) return savedTemplates;
     return generateProgramTemplates({
       experience,
       split,
@@ -5793,8 +9531,21 @@ function ProgramGeneratorDialog({
       includeCore,
       includeCardio,
       units,
+      style: genderStyle,
+      includeDeload,
     });
-  }, [experience, split, daysPerWeek, focus, includeCore, includeCardio, units]);
+  }, [
+    experience,
+    split,
+    daysPerWeek,
+    focus,
+    includeCore,
+    includeCardio,
+    units,
+    genderStyle,
+    includeDeload,
+    savedTemplates,
+  ]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -5933,6 +9684,15 @@ function ProgramGeneratorDialog({
                 </div>
                 <Switch checked={includeCardio} onCheckedChange={setIncludeCardio} />
               </div>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-medium text-sm">Include deload week</div>
+                  <div className="text-xs text-muted-foreground">
+                    Adds lighter deload templates for recovery.
+                  </div>
+                </div>
+                <Switch checked={includeDeload} onCheckedChange={setIncludeDeload} />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -5959,6 +9719,11 @@ function ProgramGeneratorDialog({
                 </div>
               ))}
             </div>
+            {savedTemplates?.length ? (
+              <div className="text-xs text-muted-foreground">
+                Saved split detected. We’ll reuse your last version.
+              </div>
+            ) : null}
             <div className="text-xs text-muted-foreground">
               You can edit anything after generating (swap exercises, sets, rep ranges, etc.).
             </div>
@@ -6002,17 +9767,27 @@ function ProgramGeneratorDialog({
           </Button>
           <Button
             onClick={() => {
-              const templates = generateProgramTemplates({
-                experience,
-                split,
-                daysPerWeek,
-                focus,
-                includeCore,
-                includeCardio,
-                units,
-              });
+              const templates =
+                savedTemplates?.length
+                  ? savedTemplates
+                  : generateProgramTemplates({
+                      experience,
+                      split,
+                      daysPerWeek,
+                      focus,
+                      includeCore,
+                      includeCardio,
+                      units,
+                      style: genderStyle,
+                      includeDeload,
+                    });
               if (!templates.length) return;
-              onGenerate(templates, scheduledDays);
+              onGenerate({
+                templates,
+                days: scheduledDays,
+                splitKey,
+                source: "generated",
+              });
               onOpenChange(false);
             }}
           >
@@ -6042,6 +9817,49 @@ function TemplateManagerDialog({
   const [selectedId, setSelectedId] = useState(selectedTemplateId);
   const [exporting, setExporting] = useState<Template | null>(null);
   const [importText, setImportText] = useState("");
+  const [exerciseSearch, setExerciseSearch] = useState("");
+  const [exerciseGroup, setExerciseGroup] = useState<
+    "all" | "push" | "pull" | "legs" | "shoulders" | "arms" | "core" | "cardio"
+  >("all");
+
+  const exerciseGroups = [
+    { key: "all", label: "All", test: (_: string) => true },
+    { key: "push", label: "Push", test: (n: string) => /bench|press|fly|dip|pushdown|tricep/.test(n) },
+    { key: "pull", label: "Pull", test: (n: string) => /row|pull|pulldown|lat|rear delt/.test(n) },
+    { key: "legs", label: "Legs", test: (n: string) => /squat|deadlift|leg|glute|ham|calf|lunge|rdl/.test(n) },
+    { key: "shoulders", label: "Shoulders", test: (n: string) => /shoulder|delt|raise|overhead/.test(n) },
+    { key: "arms", label: "Arms", test: (n: string) => /curl|bicep|tricep/.test(n) },
+    { key: "core", label: "Core", test: (n: string) => /plank|crunch|twist|raise|ab/.test(n) },
+    { key: "cardio", label: "Cardio", test: (n: string) => /sled|bike|rower|run|walk|stair|jump/.test(n) },
+  ] as const;
+
+  const exerciseMap = useMemo(() => {
+    return new Map(COMMON_EXERCISES.map((ex) => [ex.name, ex]));
+  }, []);
+
+  const filteredExercises = useMemo(() => {
+    const q = exerciseSearch.trim().toLowerCase();
+    const group = exerciseGroups.find((g) => g.key === exerciseGroup) || exerciseGroups[0];
+    return COMMON_EXERCISES.filter((ex) => {
+      const name = ex.name.toLowerCase();
+      if (!group.test(name)) return false;
+      if (!q) return true;
+      return name.includes(q);
+    });
+  }, [exerciseSearch, exerciseGroup, exerciseGroups]);
+
+  const favoriteNames = state.settings.profile.favoriteExercises || [];
+  const recentNames = state.settings.profile.recentExercises || [];
+  const favorites = favoriteNames
+    .map((name) => exerciseMap.get(name))
+    .filter((ex): ex is Omit<TemplateExercise, "id"> => !!ex)
+    .filter((ex) => filteredExercises.some((f) => f.name === ex.name));
+  const recents = recentNames
+    .map((name) => exerciseMap.get(name))
+    .filter((ex): ex is Omit<TemplateExercise, "id"> => !!ex)
+    .filter((ex) => filteredExercises.some((f) => f.name === ex.name));
+  const excluded = new Set([...favoriteNames, ...recentNames]);
+  const topMatches = filteredExercises.filter((ex) => !excluded.has(ex.name));
 
   useEffect(() => setSelectedId(selectedTemplateId), [selectedTemplateId, open]);
 
@@ -6061,6 +9879,7 @@ function TemplateManagerDialog({
       id: uid(),
       name: `New Template ${state.templates.length + 1}`,
       exercises: [],
+      source: "custom",
     };
     setState((prev) => ({ ...prev, templates: [t, ...prev.templates] }));
     setSelectedId(t.id);
@@ -6110,6 +9929,41 @@ function TemplateManagerDialog({
     };
 
     updateSelected({ ...selected, exercises: [...selected.exercises, newExercise] });
+  };
+
+  const addPresetExercise = (preset: Omit<TemplateExercise, "id">) => {
+    if (!selected) return;
+    updateSelected({
+      ...selected,
+      exercises: [...selected.exercises, { id: uid(), ...preset }],
+    });
+    setState((p) => {
+      const prev = p.settings.profile.recentExercises || [];
+      const next = [preset.name, ...prev.filter((x) => x !== preset.name)].slice(0, 8);
+      return {
+        ...p,
+        settings: {
+          ...p.settings,
+          profile: { ...p.settings.profile, recentExercises: next },
+        },
+      };
+    });
+  };
+
+  const toggleFavoriteExercise = (name: string) => {
+    setState((p) => {
+      const prev = p.settings.profile.favoriteExercises || [];
+      const next = prev.includes(name)
+        ? prev.filter((x) => x !== name)
+        : [name, ...prev].slice(0, 16);
+      return {
+        ...p,
+        settings: {
+          ...p.settings,
+          profile: { ...p.settings.profile, favoriteExercises: next },
+        },
+      };
+    });
   };
 
   const deleteExercise = (exId: string | undefined) => {
@@ -6169,7 +10023,7 @@ function TemplateManagerDialog({
     }
   };
 
-  const role: UserRole = (state.settings as any)?.role === "coach" ? "coach" : "athlete";
+  const role: UserRole = normalizeRole((state.settings as any)?.role);
   const isCoach = role === "coach";
 
   return (
@@ -6200,6 +10054,20 @@ function TemplateManagerDialog({
                   }
                 >
                   Athlete
+                </button>
+                <button
+                  type="button"
+                  className={`px-3 py-1 text-sm rounded-lg transition ${
+                    role === "smart_trainer" ? "bg-muted" : "hover:bg-muted/60"
+                  }`}
+                  onClick={() =>
+                    setState((p) => ({
+                      ...p,
+                      settings: { ...(p.settings as any), role: "smart_trainer" },
+                    }))
+                  }
+                >
+                  Smart Trainer
                 </button>
                 <button
                   type="button"
@@ -6318,32 +10186,148 @@ function TemplateManagerDialog({
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="font-medium">Exercises</div>
 
-                  <div className="flex items-center gap-2">
-                    <Select
-                      onValueChange={(v) => {
-                        const preset = COMMON_EXERCISES.find((x) => x.name === v);
-                        if (!preset) return;
-                        updateSelected({
-                          ...selected,
-                          exercises: [...selected.exercises, { id: uid(), ...preset }],
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="w-full sm:w-[260px]">
-                        <SelectValue placeholder="Add from library" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {COMMON_EXERCISES.map((item) => (
-                          <SelectItem key={item.name} value={item.name}>
-                            {item.name}
-                          </SelectItem>
+                  <div className="flex flex-col gap-2 w-full">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <Input
+                        value={exerciseSearch}
+                        onChange={(e) => setExerciseSearch(e.target.value)}
+                        placeholder="Search the exercise library..."
+                        className="sm:w-[260px]"
+                      />
+                      <div className="flex flex-wrap gap-1.5">
+                        {exerciseGroups.map((group) => (
+                          <button
+                            key={group.key}
+                            type="button"
+                            onClick={() => setExerciseGroup(group.key)}
+                            className={`rounded-full border px-2 py-1 text-[11px] uppercase tracking-[0.2em] transition ${
+                              exerciseGroup === group.key ? "bg-muted" : "hover:bg-muted/60"
+                            }`}
+                          >
+                            {group.label}
+                          </button>
                         ))}
-                      </SelectContent>
-                    </Select>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {favorites.length ? (
+                        <>
+                          <div className="w-full text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
+                            Favorites
+                          </div>
+                          {favorites.map((item) => (
+                            <div key={`fav-${item.name}`} className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="rounded-xl"
+                                onClick={() => addPresetExercise(item)}
+                              >
+                                {item.name}
+                              </Button>
+                              <button
+                                type="button"
+                                className="rounded-full border p-1 hover:bg-muted/60"
+                                onClick={() => toggleFavoriteExercise(item.name)}
+                              >
+                                <Star className="h-3 w-3 text-primary fill-primary" />
+                              </button>
+                            </div>
+                          ))}
+                        </>
+                      ) : null}
 
-                    <Button size="sm" variant="outline" className="rounded-xl" onClick={addExercise}>
-                      <Plus className="h-4 w-4 mr-2" /> Add exercise
-                    </Button>
+                      {recents.length ? (
+                        <>
+                          <div className="w-full text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
+                            Recent
+                          </div>
+                          {recents.map((item) => (
+                            <div key={`recent-${item.name}`} className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="rounded-xl"
+                                onClick={() => addPresetExercise(item)}
+                              >
+                                {item.name}
+                              </Button>
+                              <button
+                                type="button"
+                                className="rounded-full border p-1 hover:bg-muted/60"
+                                onClick={() => toggleFavoriteExercise(item.name)}
+                              >
+                                <Star
+                                  className={`h-3 w-3 ${
+                                    favoriteNames.includes(item.name)
+                                      ? "text-primary fill-primary"
+                                      : "text-muted-foreground"
+                                  }`}
+                                />
+                              </button>
+                            </div>
+                          ))}
+                        </>
+                      ) : null}
+
+                      <div className="w-full text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
+                        Top matches
+                      </div>
+                      {topMatches.slice(0, 8).map((item) => (
+                        <div key={item.name} className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl"
+                            onClick={() => addPresetExercise(item)}
+                          >
+                            {item.name}
+                          </Button>
+                          <button
+                            type="button"
+                            className="rounded-full border p-1 hover:bg-muted/60"
+                            onClick={() => toggleFavoriteExercise(item.name)}
+                          >
+                            <Star
+                              className={`h-3 w-3 ${
+                                favoriteNames.includes(item.name)
+                                  ? "text-primary fill-primary"
+                                  : "text-muted-foreground"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      ))}
+                      {filteredExercises.length === 0 ? (
+                        <div className="text-xs text-muted-foreground">
+                          No matches. Try a different filter.
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        onValueChange={(v) => {
+                          const preset = COMMON_EXERCISES.find((x) => x.name === v);
+                          if (!preset) return;
+                          addPresetExercise(preset);
+                        }}
+                      >
+                        <SelectTrigger className="w-full sm:w-[260px]">
+                          <SelectValue placeholder="Browse all exercises" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {filteredExercises.map((item) => (
+                            <SelectItem key={item.name} value={item.name}>
+                              {item.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Button size="sm" variant="outline" className="rounded-xl" onClick={addExercise}>
+                        <Plus className="h-4 w-4 mr-2" /> Add exercise
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
@@ -6415,6 +10399,125 @@ function TemplateManagerDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function AuthScreen({
+  mode,
+  email,
+  password,
+  error,
+  loading,
+  googleLoading,
+  onModeChange,
+  onEmailChange,
+  onPasswordChange,
+  onSubmit,
+  onGoogle,
+}: {
+  mode: "signin" | "signup";
+  email: string;
+  password: string;
+  error: string;
+  loading: boolean;
+  googleLoading: boolean;
+  onModeChange: (v: "signin" | "signup") => void;
+  onEmailChange: (v: string) => void;
+  onPasswordChange: (v: string) => void;
+  onSubmit: () => void;
+  onGoogle: () => void;
+}) {
+  return (
+    <div className="min-h-screen w-full bg-background text-foreground flex items-center justify-center px-4 py-10">
+      <div className="relative w-full max-w-md">
+        <div className="pointer-events-none absolute -inset-8 rounded-[36px] bg-[radial-gradient(60%_60%_at_50%_0%,var(--glow-a),transparent)] opacity-80" />
+        <div className="pointer-events-none absolute -inset-12 opacity-70">
+          <div className="absolute -top-16 -left-16 h-60 w-60 rounded-full bg-[radial-gradient(circle,var(--title-to),transparent)] blur-[90px]" />
+          <div className="absolute -bottom-16 -right-16 h-72 w-72 rounded-full bg-[radial-gradient(circle,var(--title-via),transparent)] blur-[100px]" />
+          <div className="absolute inset-0 bg-[radial-gradient(60%_80%_at_10%_0%,rgba(255,255,255,0.12),transparent)]" />
+          <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(0,0,0,0.25)_55%,transparent_100%)]" />
+        </div>
+        <div className="relative rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0))] p-[1px] shadow-[0_28px_70px_rgba(0,0,0,0.35)]">
+          <Card className="relative w-full rounded-[28px] border border-border/70 bg-card/90 shadow-[0_24px_60px_rgba(0,0,0,0.2)]">
+          <CardHeader className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-[0.6rem] uppercase tracking-[0.5em] text-muted-foreground">
+                Forge Fitness
+              </div>
+              <div className="rounded-full border border-border/70 bg-muted/50 px-2 py-1 text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+                {mode === "signup" ? "New" : "Secure"}
+              </div>
+            </div>
+            <CardTitle className="text-2xl font-display uppercase tracking-[0.25em]">
+              {mode === "signup" ? "Create account" : "Welcome back"}
+            </CardTitle>
+            <CardDescription>
+              {mode === "signup"
+                ? "Sync your workouts across devices and unlock coaching tools."
+                : "Sign in to continue your training plan."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                Email
+              </Label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => onEmailChange(e.target.value)}
+                placeholder="you@example.com"
+                className="h-11 rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                Password
+              </Label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => onPasswordChange(e.target.value)}
+                placeholder="••••••••"
+                className="h-11 rounded-xl"
+              />
+            </div>
+            {error ? (
+              <div className="rounded-xl border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                {error}
+              </div>
+            ) : null}
+            <Button className="w-full rounded-xl h-11" onClick={onSubmit} disabled={loading}>
+              {loading ? "Working..." : mode === "signup" ? "Create account" : "Sign in"}
+            </Button>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="h-px flex-1 bg-border/70" />
+              or
+              <span className="h-px flex-1 bg-border/70" />
+            </div>
+            <Button
+              variant="outline"
+              className="w-full rounded-xl h-11"
+              onClick={onGoogle}
+              disabled={googleLoading}
+            >
+              {googleLoading ? "Connecting..." : "Continue with Google"}
+            </Button>
+            <div className="text-xs text-muted-foreground text-center">
+              {mode === "signup" ? "Already have an account?" : "Need an account?"}{" "}
+              <button
+                type="button"
+                className="text-primary underline-offset-4 hover:underline"
+                onClick={() => onModeChange(mode === "signup" ? "signin" : "signup")}
+              >
+                {mode === "signup" ? "Sign in" : "Sign up"}
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -6626,12 +10729,55 @@ function adjustForExperience(
   return next;
 }
 
+const EXERCISE_ALIASES: Record<string, string> = {
+  "skull crusher": "skull crushers",
+  "dumbbell romanian deadlift": "romanian deadlift",
+  "weighted pull-up": "pull-up",
+  "calf raises": "calf raise",
+  "hip thrusts": "hip thrust",
+  "cable kickbacks": "cable kickback",
+  "rope pushdowns": "rope pushdown",
+};
+
+const findFallbackExercise = (name: string, lib: Array<Omit<TemplateExercise, "id">>) => {
+  const n = name.toLowerCase();
+  const has = (keyword: RegExp) => keyword.test(n);
+  const pick = (candidates: string[]) =>
+    lib.find((x) => candidates.includes(x.name.toLowerCase()));
+
+  if (has(/pull-?up/)) return pick(["lat pulldown", "assisted pull-up", "pull-up"]);
+  if (has(/pulldown/)) return pick(["lat pulldown"]);
+  if (has(/row/)) return pick(["chest supported row", "seated cable row", "barbell row"]);
+  if (has(/bench|press/)) return pick(["dumbbell bench press", "machine chest press", "incline dumbbell press"]);
+  if (has(/overhead press|shoulder press/)) return pick(["dumbbell shoulder press", "overhead press"]);
+  if (has(/fly/)) return pick(["cable fly", "incline cable fly", "upper cable fly"]);
+  if (has(/deadlift|rdl/)) return pick(["romanian deadlift", "dumbbell romanian deadlift"]);
+  if (has(/squat/)) return pick(["back squat", "front squat", "goblet squat"]);
+  if (has(/leg extension/)) return pick(["leg extension"]);
+  if (has(/leg curl|hamstring/)) return pick(["leg curl", "seated hamstring curl"]);
+  if (has(/calf/)) return pick(["calf raise"]);
+  if (has(/tricep/)) return pick(["triceps pushdown", "skull crushers"]);
+  if (has(/bicep|curl/)) return pick(["dumbbell curl", "hammer curl"]);
+  if (has(/glute/)) return pick(["hip thrust", "glute bridge", "hip abduction"]);
+
+  return undefined;
+};
+
 function pickByName(names: string[]) {
   const lib = COMMON_EXERCISES.map((x) => ({ ...x }));
   const out: Array<Omit<TemplateExercise, "id">> = [];
   for (const n of names) {
-    const found = lib.find((x) => x.name.toLowerCase() === n.toLowerCase());
-    if (found) out.push(found);
+    const target = n.toLowerCase();
+  const alias = EXERCISE_ALIASES[target];
+    const found =
+      lib.find((x) => x.name.toLowerCase() === target) ||
+      (alias ? lib.find((x) => x.name.toLowerCase() === alias) : undefined);
+    if (found) {
+      out.push(found);
+      continue;
+    }
+    const fallback = findFallbackExercise(n, lib);
+    if (fallback) out.push(fallback);
   }
   return out;
 }
@@ -6643,7 +10789,7 @@ function adaptExerciseForFocus(
 ): Omit<TemplateExercise, "id"> {
   // Simple, friendly defaults: beginners get slightly higher reps on compounds to learn form.
   const isBig =
-    /squat|deadlift|bench press|overhead press|row|pull-up|pulldown/i.test(ex.name);
+    /squat|deadlift|bench press|overhead press|row|pull-up|pulldown|hip thrust/i.test(ex.name);
 
   const next = { ...ex };
 
@@ -6709,13 +10855,93 @@ function adaptExerciseForFocus(
   return adjustForExperience(next, experience);
 }
 
+function applyGenderBias(
+  exerciseNames: string[],
+  style: GenderStyle,
+  dayName: string
+): string[] {
+  if (style === "neutral") return exerciseNames;
+  const list = [...exerciseNames];
+  const lowerDay = /lower|leg|glute|ham|quad/i.test(dayName);
+  const upperDay = /upper|push|pull|chest|back|arm|shoulder/i.test(dayName);
+  const fullDay = /full body/i.test(dayName);
+  const has = (name: string) =>
+    list.some((x) => x.toLowerCase() === name.toLowerCase());
+  const replaceOne = (from: string[], to: string) => {
+    if (has(to)) return true;
+    for (const item of from) {
+      const idx = list.findIndex((x) => x.toLowerCase() === item.toLowerCase());
+      if (idx >= 0) {
+        list[idx] = to;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  if (style === "glute" && (lowerDay || fullDay)) {
+    replaceOne(
+      ["Leg Extension", "Leg Press", "Calf Raise", "Front Squat"],
+      "Hip Thrust"
+    );
+    replaceOne(
+      ["Leg Extension", "Calf Raise", "Leg Press"],
+      "Bulgarian Split Squat"
+    );
+  }
+
+  if (style === "mass" && (upperDay || fullDay)) {
+    if (!has("Dumbbell Curl") && !has("Hammer Curl")) {
+      replaceOne(["Face Pull", "Lateral Raise"], "Dumbbell Curl");
+    }
+    if (!has("Triceps Pushdown")) {
+      replaceOne(["Face Pull", "Lateral Raise"], "Triceps Pushdown");
+    }
+    if (has("Bench Press") && !has("Incline Bench Press")) {
+      replaceOne(["Machine Chest Press", "Dumbbell Bench Press"], "Incline Bench Press");
+    }
+  }
+
+  return list;
+}
+
+function getSimilarExercises(name: string) {
+  const n = name.toLowerCase();
+  const matches = COMMON_EXERCISES.filter((ex) => {
+    const exName = ex.name.toLowerCase();
+    if (n.includes("bench") || n.includes("press")) {
+      return /bench|press|fly|dips/.test(exName);
+    }
+    if (n.includes("row") || n.includes("pull") || n.includes("lat")) {
+      return /row|pull|pulldown/.test(exName);
+    }
+    if (n.includes("squat") || n.includes("leg") || n.includes("glute") || n.includes("ham")) {
+      return /squat|leg|glute|ham|calf/.test(exName);
+    }
+    if (n.includes("curl") || n.includes("bicep")) {
+      return /curl/.test(exName);
+    }
+    if (n.includes("tricep")) {
+      return /tricep|skull|pushdown/.test(exName);
+    }
+    if (n.includes("shoulder") || n.includes("delt") || n.includes("raise")) {
+      return /shoulder|delt|raise|press/.test(exName);
+    }
+    return false;
+  });
+  const unique = new Map(matches.map((m) => [m.name, m]));
+  return Array.from(unique.values()).slice(0, 10);
+}
+
 function buildDay(
   name: string,
   exerciseNames: string[],
   focus: FocusType,
-  experience: ExperienceLevel
+  experience: ExperienceLevel,
+  style: GenderStyle
 ): Template {
-  const picked = pickByName(exerciseNames)
+  const biasedNames = applyGenderBias(exerciseNames, style, name);
+  const picked = pickByName(biasedNames)
     .map((ex) => adaptExerciseForFocus(ex, focus, experience))
     .map((ex) => ({ id: uid(), ...ex }));
 
@@ -6776,6 +11002,26 @@ function applyIntensityTechniques(exercises: TemplateExercise[], focus: FocusTyp
   return next;
 }
 
+function applyDeloadTemplate(template: Template): Template {
+  return {
+    ...template,
+    id: uid(),
+    name: `Deload • ${template.name}`,
+    exercises: (template.exercises || []).map((ex) => ({
+      ...ex,
+      id: uid(),
+      defaultSets: Math.max(1, Math.round((ex.defaultSets || 1) * 0.6)),
+      restSec: Math.max(30, Math.round((ex.restSec || 60) * 0.8)),
+      repRange: ex.timeUnit
+        ? ex.repRange
+        : {
+            min: Math.max(4, Math.round(ex.repRange.min * 0.8)),
+            max: Math.max(6, Math.round(ex.repRange.max * 0.8)),
+          },
+    })),
+  };
+}
+
 function generateProgramTemplates(opts: {
   experience: ExperienceLevel;
   split: SplitType;
@@ -6784,14 +11030,57 @@ function generateProgramTemplates(opts: {
   includeCore: boolean;
   includeCardio: boolean;
   units: Units;
+  style?: GenderStyle;
+  includeDeload?: boolean;
 }): Template[] {
-  const { experience, split, daysPerWeek, focus, includeCore, includeCardio } = opts;
+  const {
+    experience,
+    split,
+    daysPerWeek,
+    focus,
+    includeCore,
+    includeCardio,
+    style = "neutral",
+    includeDeload = false,
+  } = opts;
 
   // Notes: we keep templates simple + editable. This is designed to be welcoming,
   // not “maximalist bodybuilding spreadsheets.”
 
-  const finishers = includeCore ? ["Plank", "Cable Crunch"] : [];
-  const addFinishers = (names: string[]) => [...names, ...finishers];
+  const coreFinishers = () => {
+    if (!includeCore) return [];
+    const base = pickByName(["Plank", "Cable Crunch"]);
+    const out: TemplateExercise[] = [];
+    const plank = base.find((ex) => ex.name.toLowerCase() === "plank");
+    if (plank) {
+      out.push({
+        id: uid(),
+        ...plank,
+        name: "Optional Core • Plank (sec)",
+        defaultSets: 3,
+        repRange: { min: 30, max: 60 },
+        restSec: 30,
+        weightStep: 0,
+        autoProgress: false,
+        timeUnit: "seconds",
+      });
+    }
+    const crunch = base.find((ex) => ex.name.toLowerCase() === "cable crunch");
+    if (crunch) {
+      out.push({
+        id: uid(),
+        ...crunch,
+        name: "Optional Core • Cable Crunch (sec)",
+        defaultSets: 3,
+        repRange: { min: 30, max: 45 },
+        restSec: 30,
+        weightStep: 0,
+        autoProgress: false,
+        timeUnit: "seconds",
+      });
+    }
+    return out;
+  };
 
   const effectiveCardio = includeCardio || focus === "fat_loss";
   const cardioRange =
@@ -6804,14 +11093,30 @@ function generateProgramTemplates(opts: {
       : { min: 25, max: 35 };
   const cardioLabel =
     focus === "fat_loss"
-      ? "Cardio Intervals (min)"
+      ? "Optional Cardio Intervals (min)"
       : experience === "advanced"
-      ? "Cardio (post-workout)"
-      : "Cardio Finisher (min)";
+      ? "Optional Cardio (post-workout)"
+      : "Optional Cardio (min)";
 
   const maybeAddCardioFinisher = (templates: Template[]) => {
     if (!effectiveCardio) return templates;
     return appendCardioFinisher(templates, cardioLabel, cardioRange);
+  };
+
+  const maybeAddCoreFinishers = (templates: Template[]) => {
+    const core = coreFinishers();
+    if (!core.length) return templates;
+    return templates.map((t) => ({
+      ...t,
+      exercises: [...(t.exercises || []), ...core.map((ex) => ({ ...ex, id: uid() }))],
+    }));
+  };
+
+  const finalizeTemplates = (templates: Template[]) => {
+    const withFinishers = maybeAddCoreFinishers(maybeAddCardioFinisher(templates));
+    if (!includeDeload) return withFinishers;
+    const deload = withFinishers.map((t) => applyDeloadTemplate(t));
+    return [...withFinishers, ...deload];
   };
 
   if (split === "full_body") {
@@ -6837,13 +11142,14 @@ function generateProgramTemplates(opts: {
       days.push(
         buildDay(
           `Full Body ${String.fromCharCode(65 + i)}`,
-          addFinishers(pick[i]),
+          pick[i],
           focus,
-          experience
+          experience,
+          style
         )
       );
     }
-    return maybeAddCardioFinisher(days);
+    return finalizeTemplates(days);
   }
 
   if (split === "upper_lower") {
@@ -6862,21 +11168,23 @@ function generateProgramTemplates(opts: {
 
     const sequence = d === 3 ? ["Upper", "Lower", "Upper"] : d === 4 ? ["Upper", "Lower", "Upper", "Lower"] : ["Upper", "Lower", "Upper", "Lower", "Upper"];
 
-    return maybeAddCardioFinisher(sequence.map((label, i) =>
+    return finalizeTemplates(sequence.map((label, i) =>
       label === "Upper"
         ? buildDay(
           `Upper ${Math.ceil((i + 1) / 2)}`,
-          addFinishers(upper),
+          upper,
           focus,
-          experience
+          experience,
+          style
           )
         : buildDay(
             `Lower ${Math.ceil((i + 1) / 2)}`,
-            addFinishers(lower),
+            lower,
             focus,
-            experience
+            experience,
+            style
           )
-    ));;
+    ));
   }
 
   // PHUL (Power / Hypertrophy Upper Lower)
@@ -6904,13 +11212,13 @@ function generateProgramTemplates(opts: {
     const loHyp = experience === "beginner" ? lowerHyper_beginner : experience === "advanced" ? lowerHyper_advanced : lowerHyper_intermediate;
 
     const phulDays: Template[] = [
-      buildDay("Upper • Power", addFinishers(upPow), "strength", experience),
-      buildDay("Lower • Power", addFinishers(loPow), "strength", experience),
-      buildDay("Upper • Hypertrophy", addFinishers(upHyp), "hypertrophy", experience),
-      buildDay("Lower • Hypertrophy", addFinishers(loHyp), "hypertrophy", experience),
+      buildDay("Upper • Power", upPow, "strength", experience, style),
+      buildDay("Lower • Power", loPow, "strength", experience, style),
+      buildDay("Upper • Hypertrophy", upHyp, "hypertrophy", experience, style),
+      buildDay("Lower • Hypertrophy", loHyp, "hypertrophy", experience, style),
     ];
 
-    return maybeAddCardioFinisher(phulDays.slice(0, d));
+    return finalizeTemplates(phulDays.slice(0, d));
   }
 
   // Bro Split (5-day body-part split)
@@ -6943,14 +11251,14 @@ function generateProgramTemplates(opts: {
 
     const seq = ["Chest", "Back", "Legs", "Shoulders", "Arms"];
     const out = seq.slice(0, d).map((label) => {
-      if (label === "Chest") return buildDay("Chest", addFinishers(chest), focus, experience);
-      if (label === "Back") return buildDay("Back", addFinishers(back), focus, experience);
-      if (label === "Legs") return buildDay("Legs", addFinishers(legs), focus, experience);
-      if (label === "Shoulders") return buildDay("Shoulders", addFinishers(shoulders), focus, experience);
-      return buildDay("Arms", addFinishers(arms), focus, experience);
+      if (label === "Chest") return buildDay("Chest", chest, focus, experience, style);
+      if (label === "Back") return buildDay("Back", back, focus, experience, style);
+      if (label === "Legs") return buildDay("Legs", legs, focus, experience, style);
+      if (label === "Shoulders") return buildDay("Shoulders", shoulders, focus, experience, style);
+      return buildDay("Arms", arms, focus, experience, style);
     });
 
-    return maybeAddCardioFinisher(out);
+    return finalizeTemplates(out);
   }
 
   if (split === "ppl") {
@@ -6973,37 +11281,41 @@ function generateProgramTemplates(opts: {
 
   const seq = d === 3 ? ["Push", "Pull", "Legs"] : d === 4 ? ["Push", "Pull", "Legs", "Push"] : d === 5 ? ["Push", "Pull", "Legs", "Push", "Pull"] : ["Push", "Pull", "Legs", "Push", "Pull", "Legs"];
 
-  return maybeAddCardioFinisher(seq.map((label, i) => {
+  return maybeAddCoreFinishers(maybeAddCardioFinisher(seq.map((label, i) => {
     if (label === "Push")
       return buildDay(
         `Push ${Math.ceil((i + 1) / 3)}`,
-        addFinishers(push),
+        push,
         focus,
-        experience
+        experience,
+        style
       );
     if (label === "Pull")
       return buildDay(
         `Pull ${Math.ceil((i + 1) / 3)}`,
-        addFinishers(pull),
+        pull,
         focus,
-        experience
+        experience,
+        style
       );
     return buildDay(
       `Legs ${Math.ceil((i + 1) / 3)}`,
-      addFinishers(legs),
+      legs,
       focus,
-      experience
+      experience,
+      style
     );
-  }));
+  })));
   }
 
   // Fallback
-  return maybeAddCardioFinisher([
+  return finalizeTemplates([
     buildDay(
       "Full Body A",
-      addFinishers(["Goblet Squat", "Machine Chest Press", "Lat Pulldown", "Leg Press"]),
+      ["Goblet Squat", "Machine Chest Press", "Lat Pulldown", "Leg Press"],
       focus,
-      experience
+      experience,
+      style
     ),
   ]);
 
@@ -7540,6 +11852,7 @@ function runSelfTests() {
       includeCore: true,
       includeCardio: false,
       units: "lb",
+      includeDeload: false,
     });
     console.assert(gen.length === 3, "generator creates correct day count");
     console.assert(

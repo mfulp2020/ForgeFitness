@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { User } from "@supabase/supabase-js";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 import {
   Card,
   CardContent,
@@ -170,6 +170,7 @@ type Profile = {
   height: string;
   weight: string;
   birthdate: string;
+  disclaimerAccepted: boolean;
   gender?: "male" | "female" | "prefer_not";
   coachNotes?: string;
   favoriteExercises?: string[];
@@ -1813,6 +1814,7 @@ const defaultState: AppState = {
       height: "",
       weight: "",
       birthdate: "",
+      disclaimerAccepted: false,
       gender: "prefer_not",
       coachNotes: "",
       favoriteExercises: [],
@@ -1863,7 +1865,7 @@ export default function WorkoutTrackerApp() {
 
   const supabaseEnabled = !!supabase;
   const [authReady, setAuthReady] = useState(!supabaseEnabled);
-  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authUser, setAuthUser] = useState<SupabaseUser | null>(null);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -2278,7 +2280,7 @@ useEffect(() => {
   }, [selectedMessageFriend, supabase, authUser]);
 
   const needsOnboarding = !state.settings.profile?.completed;
-  const needsIntro = !state.settings.profile?.introSeen && !state.settings.profile?.completed;
+  const needsIntro = !state.settings.profile?.introSeen;
 
   const replaceProgramTemplates = useCallback(
     (
@@ -3269,6 +3271,7 @@ useEffect(() => {
         Number(nextProfile.height) > 0 &&
         Number(nextProfile.weight) > 0 &&
         !!nextProfile.birthdate &&
+        !!nextProfile.disclaimerAccepted &&
         !!nextProfile.gender);
       return {
         ...p,
@@ -8493,6 +8496,10 @@ function OnboardingScreen({
       setError("Add your birthday.");
       return;
     }
+    if (!profile.disclaimerAccepted) {
+      setError("Accept the training disclaimer to continue.");
+      return;
+    }
     if (!profile.gender) {
       setError("Select a gender.");
       return;
@@ -8555,6 +8562,10 @@ function OnboardingScreen({
       }
       if (!profile.birthdate) {
         setError("Add your birthday.");
+        return;
+      }
+      if (!profile.disclaimerAccepted) {
+        setError("Accept the training disclaimer to continue.");
         return;
       }
     }
@@ -8743,6 +8754,28 @@ function OnboardingScreen({
                         }
                         className="w-full accent-primary"
                       />
+                    </div>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/10 bg-background/60 px-3 py-2">
+                      <div>
+                        <div className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
+                          Training disclaimer
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          This app provides fitness guidance only. Always train safely and consult a professional if
+                          needed.
+                        </div>
+                      </div>
+                      <Switch
+                        checked={!!profile.disclaimerAccepted}
+                        onCheckedChange={(v) =>
+                          setProfile((p) => ({ ...p, disclaimerAccepted: v }))
+                        }
+                      />
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      By continuing, you confirm you understand this is not medical advice.
                     </div>
                   </div>
                 </div>
@@ -8984,6 +9017,7 @@ function SettingsPanel({
                 Number(nextProfile.height) > 0 &&
                 Number(nextProfile.weight) > 0 &&
                 !!nextProfile.birthdate &&
+                !!nextProfile.disclaimerAccepted &&
                 !!nextProfile.gender);
     onChange({ ...settings, profile: { ...nextProfile, completed } });
   };

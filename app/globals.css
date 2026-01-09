@@ -226,6 +226,16 @@
   --pattern-opacity: 0.18;
 }
 
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
 /* Theme: Noir Steel */
 :root[data-theme="noir"] {
   --background: oklch(0.96 0.01 260);

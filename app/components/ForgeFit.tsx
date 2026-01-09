@@ -2180,10 +2180,10 @@ const headerStats = useMemo(() => {
                 </div>
 
                 {/* Quick actions */}
-                <div className="flex flex-wrap items-center gap-2 justify-start md:justify-end">
+                <div className="flex md:flex-wrap flex-nowrap items-center gap-2 justify-start md:justify-end overflow-x-auto no-scrollbar -mx-2 px-2 py-1">
                   <Button
                     variant="secondary"
-                    className="rounded-2xl bg-card/80 hover:bg-card border border-foreground/15 uppercase text-[0.62rem] tracking-[0.28em]"
+                    className="shrink-0 rounded-2xl bg-card/80 hover:bg-card border border-foreground/15 uppercase text-[0.62rem] tracking-[0.28em] h-10"
                     onClick={() => setTemplateDialogOpen(true)}
                   >
                     <ClipboardList className="h-4 w-4" />
@@ -2192,7 +2192,7 @@ const headerStats = useMemo(() => {
 
                   <Button
                     variant="secondary"
-                    className="rounded-2xl bg-card/80 hover:bg-card border border-foreground/15 uppercase text-[0.62rem] tracking-[0.28em]"
+                    className="shrink-0 rounded-2xl bg-card/80 hover:bg-card border border-foreground/15 uppercase text-[0.62rem] tracking-[0.28em] h-10"
                     onClick={() => setGeneratorOpen(true)}
                   >
                     <Sparkles className="h-4 w-4" />
@@ -2201,7 +2201,7 @@ const headerStats = useMemo(() => {
 
                   <Button
                     variant="secondary"
-                    className="rounded-2xl bg-card/80 hover:bg-card border border-foreground/15 uppercase text-[0.62rem] tracking-[0.28em]"
+                    className="shrink-0 rounded-2xl bg-card/80 hover:bg-card border border-foreground/15 uppercase text-[0.62rem] tracking-[0.28em] h-10"
                     onClick={() => setImportDialogOpen(true)}
                   >
                     <Upload className="h-4 w-4" />
@@ -2210,7 +2210,7 @@ const headerStats = useMemo(() => {
 
                   <Button
                     variant="secondary"
-                    className="rounded-2xl bg-card/80 hover:bg-card border border-foreground/15 uppercase text-[0.62rem] tracking-[0.28em]"
+                    className="shrink-0 rounded-2xl bg-card/80 hover:bg-card border border-foreground/15 uppercase text-[0.62rem] tracking-[0.28em] h-10"
                     onClick={exportData}
                   >
                     <Download className="h-4 w-4" />
@@ -2220,7 +2220,7 @@ const headerStats = useMemo(() => {
                   <Button
                     variant="outline"
                     size="icon"
-                    className="rounded-2xl border-foreground/20"
+                    className="shrink-0 rounded-2xl border-foreground/20 h-10 w-10"
                     onClick={() => setSettingsDialogOpen(true)}
                     aria-label="Open settings"
                   >
@@ -2232,28 +2232,28 @@ const headerStats = useMemo(() => {
 
               {/* Stats row */}
               <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div className="rounded-2xl border border-foreground/20 bg-card/80 px-3 py-2 shadow-[0_16px_32px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
+                <div className="rounded-2xl border border-foreground/20 bg-gradient-to-br from-card/95 via-card/80 to-card/60 px-3 py-2 shadow-[0_16px_32px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
                   <div className="flex items-center gap-2 text-[0.62rem] text-muted-foreground uppercase tracking-[0.3em]">
                     <Flame className="h-4 w-4" /> Streak
                   </div>
                   <div className="mt-1 text-2xl font-display">{headerStats.streak}d</div>
                 </div>
 
-                <div className="rounded-2xl border border-foreground/20 bg-card/80 px-3 py-2 shadow-[0_16px_32px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
+                <div className="rounded-2xl border border-foreground/20 bg-gradient-to-br from-card/95 via-card/80 to-card/60 px-3 py-2 shadow-[0_16px_32px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
                   <div className="flex items-center gap-2 text-[0.62rem] text-muted-foreground uppercase tracking-[0.3em]">
                     <History className="h-4 w-4" /> Sessions
                   </div>
                   <div className="mt-1 text-2xl font-display">{headerStats.totalSessions}</div>
                 </div>
 
-                <div className="rounded-2xl border border-foreground/20 bg-card/80 px-3 py-2 shadow-[0_16px_32px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
+                <div className="rounded-2xl border border-foreground/20 bg-gradient-to-br from-card/95 via-card/80 to-card/60 px-3 py-2 shadow-[0_16px_32px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
                   <div className="flex items-center gap-2 text-[0.62rem] text-muted-foreground uppercase tracking-[0.3em]">
                     <TrendingUp className="h-4 w-4" /> 7d Volume
                   </div>
                   <div className="mt-1 text-2xl font-display">{Math.round(headerStats.vol7d).toLocaleString()}</div>
                 </div>
 
-                <div className="rounded-2xl border border-foreground/20 bg-card/80 px-3 py-2 shadow-[0_16px_32px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
+                <div className="rounded-2xl border border-foreground/20 bg-gradient-to-br from-card/95 via-card/80 to-card/60 px-3 py-2 shadow-[0_16px_32px_rgba(0,0,0,0.18)] border-l-4 border-l-primary/60">
                   <div className="flex items-center gap-2 text-[0.62rem] text-muted-foreground uppercase tracking-[0.3em]">
                     <CalendarDays className="h-4 w-4" /> Last
                   </div>
@@ -3075,9 +3075,9 @@ const headerStats = useMemo(() => {
                         </Button>
                       </div>
                     </div>
-                    <div className="mt-4">
-                      <Button
-                        className="w-full rounded-2xl bg-primary text-primary-foreground font-display uppercase tracking-[0.3em] text-sm shadow-[0_18px_36px_rgba(0,0,0,0.45)] hover:-translate-y-0.5 hover:shadow-[0_24px_44px_rgba(0,0,0,0.55)]"
+                      <div className="mt-4">
+                        <Button
+                        className="w-full h-12 rounded-2xl bg-primary text-primary-foreground font-display uppercase tracking-[0.3em] text-sm shadow-[0_18px_36px_rgba(0,0,0,0.45)] hover:-translate-y-0.5 hover:shadow-[0_24px_44px_rgba(0,0,0,0.55)]"
                         onClick={() => {
                           setLogMode("template");
                           setGymMode(true);
@@ -4119,7 +4119,7 @@ function ExerciseLogger({
               </div>
             </div>
 
-            <div className="sm:hidden rounded-xl border border-foreground/15 bg-card/70 p-3 space-y-2">
+            <div className="sm:hidden rounded-2xl border border-foreground/15 bg-gradient-to-br from-card/90 via-card/80 to-card/60 p-3 space-y-2 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-medium">Set {i + 1}</div>
                 <Button

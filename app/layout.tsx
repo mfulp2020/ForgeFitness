@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Bebas_Neue, Sora } from "next/font/google";
+import { Black_Ops_One, Sora } from "next/font/google";
 import "./globals.css";
 
 const bodyFont = Sora({
@@ -7,7 +7,7 @@ const bodyFont = Sora({
   subsets: ["latin"],
 });
 
-const displayFont = Bebas_Neue({
+const displayFont = Black_Ops_One({
   variable: "--font-display",
   weight: "400",
   subsets: ["latin"],
@@ -17,8 +17,8 @@ export const metadata: Metadata = {
   title: "Forge Fitness",
   description: "Hardcore training log for lifting, progress, and goals.",
   icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg",
+    icon: "/icon.png",
+    apple: "/apple-touch-icon.png",
   },
 };
 

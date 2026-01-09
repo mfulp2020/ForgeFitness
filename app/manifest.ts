@@ -7,13 +7,18 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Hardcore training log for lifting, progress, and goals.",
     start_url: "/",
     display: "standalone",
-    background_color: "#0b0b12",
-    theme_color: "#8b5cf6",
+    background_color: "#0b0b0b",
+    theme_color: "#0b0b0b",
     icons: [
       {
-        src: "/icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/icon.png",
+        sizes: "512x512",
+        type: "image/png",
+      },
+      {
+        src: "/apple-touch-icon.png",
+        sizes: "180x180",
+        type: "image/png",
       },
     ],
   };

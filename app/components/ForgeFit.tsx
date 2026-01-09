@@ -1614,7 +1614,7 @@ useEffect(() => {
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("Import failed", e);
-      alert("Import failed. Make sure it's valid ForgeFit JSON.");
+      alert("Import failed. Make sure it's valid Forge Fitness JSON.");
     }
   };
 
@@ -2156,7 +2156,7 @@ const headerStats = useMemo(() => {
                   <div className="h-12 w-12 rounded-xl border border-primary/40 bg-primary/10 flex items-center justify-center shadow-inner overflow-hidden">
                     <img
                       src="/forgefit-logo.svg"
-                      alt="ForgeFit"
+                      alt="Forge Fitness"
                       className="h-9 w-9"
                       style={{ filter: "drop-shadow(0 6px 18px var(--icon-glow))" }}
                     />
@@ -2164,7 +2164,7 @@ const headerStats = useMemo(() => {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-3xl sm:text-4xl md:text-5xl font-display uppercase leading-none tracking-[0.16em] sm:tracking-[0.22em] text-transparent bg-clip-text bg-[linear-gradient(90deg,var(--title-from),var(--title-via),var(--title-to))] drop-shadow-[0_10px_24px_rgba(0,0,0,0.3)]">
-                        ForgeFit
+                        Forge Fitness
                       </span>
                       <Badge
                         className="rounded-full border-primary/40 bg-primary/15 text-primary uppercase tracking-[0.35em] text-[0.6rem] px-2.5 py-1"
@@ -2393,7 +2393,7 @@ const headerStats = useMemo(() => {
             </DialogHeader>
 
             <div className="space-y-2">
-              <Label>ForgeFit JSON</Label>
+              <Label>Forge Fitness JSON</Label>
               <textarea
                 value={exportText}
                 readOnly
@@ -2923,7 +2923,7 @@ const headerStats = useMemo(() => {
                     <ClipboardList className="h-5 w-5" /> Log today’s workout
                   </CardTitle>
                   <CardDescription>
-                    Pick a template, log your sets, and let ForgeFit suggest the next goal.
+                    Pick a template, log your sets, and let Forge Fitness suggest the next goal.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -3455,7 +3455,7 @@ const headerStats = useMemo(() => {
                   </div>
 
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="text-sm text-muted-foreground">Tip: Log your top set — ForgeFit handles the math and progression.</div>
+                    <div className="text-sm text-muted-foreground">Tip: Log your top set — Forge Fitness handles the math and progression.</div>
                     <Button className="rounded-2xl" onClick={saveSession}>
                       <Save className="h-4 w-4 mr-2" /> Save session
                     </Button>
@@ -3576,7 +3576,7 @@ const headerStats = useMemo(() => {
                     <Target className="h-5 w-5" /> Goals
                   </CardTitle>
                   <CardDescription>
-                    Track targets and let ForgeFit propose new ones.
+                    Track targets and let Forge Fitness propose new ones.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -4842,13 +4842,13 @@ function GetStartedScreen({ onStart }: { onStart: () => void }) {
           </div>
           <div className="relative z-10 w-full max-w-xl space-y-5 rounded-3xl border border-foreground/20 bg-background/85 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.4)] backdrop-blur">
             <div className="inline-flex items-center gap-2 rounded-full border border-foreground/20 px-4 py-2 text-xs uppercase tracking-[0.3em] text-muted-foreground">
-              ForgeFit • Iron Edition
+              Forge Fitness • Iron Edition
             </div>
             <div className="text-4xl md:text-5xl font-display uppercase tracking-[0.22em]">
               This is your line in the sand.
             </div>
             <div className="text-sm text-muted-foreground leading-relaxed">
-              ForgeFit is built for people who want real change. You are about to lock in your
+              Forge Fitness is built for people who want real change. You are about to lock in your
               training, track every set, and build momentum that lasts.
             </div>
             <div className="space-y-2 text-sm">
@@ -5063,7 +5063,7 @@ function OnboardingScreen({
               Enter The App
             </CardTitle>
             <CardDescription>
-              Build your profile so ForgeFit can dial in your goals and tracking.
+              Build your profile so Forge Fitness can dial in your goals and tracking.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4 min-h-[520px]">
@@ -5802,7 +5802,7 @@ function ProgramGeneratorDialog({
         <DialogHeader>
           <DialogTitle>Generate a workout plan</DialogTitle>
           <DialogDescription>
-            Pick your experience and preferred split. ForgeFit will create templates you can start logging immediately.
+            Pick your experience and preferred split. Forge Fitness will create templates you can start logging immediately.
           </DialogDescription>
         </DialogHeader>
 

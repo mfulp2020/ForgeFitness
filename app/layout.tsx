@@ -14,7 +14,7 @@ const displayFont = Bebas_Neue({
 });
 
 export const metadata: Metadata = {
-  title: "ForgeFit",
+  title: "Forge Fitness",
   description: "Hardcore training log for lifting, progress, and goals.",
   icons: {
     icon: "/icon.svg",

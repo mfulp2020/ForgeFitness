@@ -2103,10 +2103,12 @@ useEffect(() => {
   }, [supabaseEnabled, authUser, isCoach]);
 
   useEffect(() => {
-    if (!supabaseEnabled || !authUser || !supabase) return;
+    if (!supabaseEnabled || !authUser) return;
+    const supabaseClient = supabase;
+    if (!supabaseClient) return;
     if (isCoach) return;
     const loadAssignments = async () => {
-      const assignRes = await supabase
+      const assignRes = await supabaseClient
         .from("coach_assignments")
         .select("id, template")
         .eq("athlete_id", authUser.id)

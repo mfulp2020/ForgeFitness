@@ -2262,9 +2262,11 @@ useEffect(() => {
   }, [supabaseEnabled, authUser, supabase]);
 
   useEffect(() => {
-    if (!selectedMessageFriend || !supabase || !authUser) return;
+    if (!selectedMessageFriend || !authUser) return;
+    const supabaseClient = supabase;
+    if (!supabaseClient) return;
     const loadMessages = async () => {
-      const res = await supabase
+      const res = await supabaseClient
         .from("messages")
         .select("id, sender_id, body, created_at, sender:profiles(username)")
         .or(

@@ -1992,7 +1992,7 @@ useEffect(() => {
   }, [simpleMode, activeTab]);
 
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "social" | "profile" | "more"
+    "dashboard" | "workouts" | "social" | "profile" | "more"
   >("dashboard");
   const simpleMode = !!state.settings.simpleMode;
   const [selectedTemplateId, setSelectedTemplateId] = useState(
@@ -5305,149 +5305,6 @@ const headerStats = useMemo(() => {
                   <div className="mx-auto h-[3px] w-32 rounded-full bg-gradient-to-r from-transparent via-[#ff5a1f] to-transparent" />
                 </div>
 
-                {!simpleMode && isBirthday ? (
-                  <motion.div variants={cardMotion}>
-                    <Card className="rounded-2xl shadow-md card-hero">
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                          <Sparkles className="h-5 w-5" /> Birthday boost
-                        </CardTitle>
-                        <CardDescription>
-                          We&apos;re celebrating your level-up today.
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="text-sm text-muted-foreground">
-                          Happy Birthday{state.settings.profile.name ? `, ${state.settings.profile.name}` : ""}!
-                          {birthdayAge !== null ? ` ${birthdayAge} years strong.` : " Another year, more gains."}
-                        </div>
-                        <div className="rounded-2xl border border-foreground/10 bg-background/60 px-4 py-3 text-sm">
-                          Birthday bonus unlocked: extra recovery credit + a motivation badge in your profile.
-                        </div>
-                        <Button
-                          className="rounded-2xl"
-                          onClick={() => setBirthdayClaimed(true)}
-                          disabled={birthdayClaimed}
-                        >
-                          {birthdayClaimed ? "Birthday boost active" : "Claim birthday boost"}
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ) : null}
-
-                {!simpleMode ? (
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-edge">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <Sparkles className="h-5 w-5" /> Smart Trainer notes
-                      </CardTitle>
-                      <CardDescription>
-                        Daily coaching cues. Add your focus points and reminders for this session.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <textarea
-                        className="w-full min-h-[96px] rounded-xl border border-border/70 bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                        placeholder="Smart Trainer cues for today..."
-                        value={state.settings.profile.coachNotes || ""}
-                        onChange={(e) =>
-                          setState((p) => ({
-                            ...p,
-                            settings: {
-                              ...p.settings,
-                              profile: { ...p.settings.profile, coachNotes: e.target.value },
-                            },
-                          }))
-                        }
-                      />
-                      <div className="text-xs text-muted-foreground">
-                        Example: tempo cues, focus muscles, or form reminders for today.
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-                ) : null}
-
-                {!simpleMode ? (
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-edge">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <Sparkles className="h-5 w-5" /> Smart Trainer suggestions
-                      </CardTitle>
-                      <CardDescription>
-                        Accept or skip. Suggestions auto-adjust based on your last sessions.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {Object.keys(insights.suggestions).length === 0 ? (
-                        <div className="text-sm text-muted-foreground">
-                          Log a few workouts with top sets to unlock suggestions.
-                        </div>
-                      ) : (
-                        <motion.div variants={listMotion} className="space-y-2">
-                          {Object.entries(insights.suggestions).slice(0, 8).map(([name, s]) => (
-                            <motion.div key={name} variants={listItemMotion} className="rounded-2xl border p-3">
-                              <div className="font-medium">{name}</div>
-                              <div className="text-sm text-muted-foreground mt-1">
-                                Next: {s.next.weight}
-                                {state.settings.units} × {s.next.reps}
-                              </div>
-                              <div className="text-xs text-muted-foreground mt-1">{s.reason}</div>
-                            </motion.div>
-                          ))}
-                        </motion.div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </motion.div>
-                ) : null}
-
-                {!simpleMode ? (
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-minimal">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                      <TrendingUp className="h-5 w-5" /> Momentum
-                    </CardTitle>
-                    <CardDescription>Streak, volume, and recent sessions.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    <motion.div variants={listMotion} className="contents">
-                      <motion.div variants={listItemMotion} className="rounded-2xl border p-3">
-                        <div className="flex items-center gap-2 text-[0.6rem] text-muted-foreground uppercase tracking-[0.3em]">
-                          <Flame className="h-4 w-4" /> Streak
-                        </div>
-                        <div className="mt-1 text-2xl font-display">{headerStats.streak}d</div>
-                      </motion.div>
-                      <motion.div variants={listItemMotion} className="rounded-2xl border p-3">
-                        <div className="flex items-center gap-2 text-[0.6rem] text-muted-foreground uppercase tracking-[0.3em]">
-                          <History className="h-4 w-4" /> Sessions
-                        </div>
-                        <div className="mt-1 text-2xl font-display">{headerStats.totalSessions}</div>
-                      </motion.div>
-                      <motion.div variants={listItemMotion} className="rounded-2xl border p-3">
-                        <div className="flex items-center gap-2 text-[0.6rem] text-muted-foreground uppercase tracking-[0.3em]">
-                          <TrendingUp className="h-4 w-4" /> 7d Volume
-                        </div>
-                        <div className="mt-1 text-2xl font-display">
-                          {Math.round(headerStats.vol7d).toLocaleString()}
-                        </div>
-                      </motion.div>
-                      <motion.div variants={listItemMotion} className="rounded-2xl border p-3">
-                        <div className="flex items-center gap-2 text-[0.6rem] text-muted-foreground uppercase tracking-[0.3em]">
-                          <CalendarDays className="h-4 w-4" /> Last
-                        </div>
-                        <div className="mt-1 text-2xl font-display">{headerStats.lastLabel}</div>
-                      </motion.div>
-                    </motion.div>
-                  </CardContent>
-                  </Card>
-                </motion.div>
-                ) : null}
-
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-hero">
                   <CardHeader>
@@ -5573,59 +5430,388 @@ const headerStats = useMemo(() => {
                   </Card>
                 </motion.div>
 
-                {!simpleMode ? (
                 <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-glass">
+                  <Card className="rounded-2xl shadow-md">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <Target className="h-5 w-5" /> {focusHeadline}
+                        <CalendarDays className="h-5 w-5" /> Weekly overview
                       </CardTitle>
-                      <CardDescription>{focusDetail}</CardDescription>
+                      <CardDescription>All assigned workouts and rest days.</CardDescription>
                     </CardHeader>
-                    <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="rounded-2xl border border-foreground/10 bg-background/60 p-4">
-                        <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
-                          Focus cues
-                        </div>
-                        <div className="mt-2 space-y-2 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-primary" />
-                            Show up and hit the first set with intent.
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-primary" />
-                            Match the target reps before adding weight.
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-primary" />
-                            Log every set to unlock better suggestions.
-                          </div>
-                        </div>
-                      </div>
-                      <div className="rounded-2xl border border-foreground/10 bg-background/60 p-4">
-                        <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
-                          Next up
-                        </div>
-                        {nextExercisePreview ? (
-                          <div className="mt-2 space-y-2 text-sm">
-                            <div className="text-lg font-display">{nextExercisePreview.name}</div>
-                            <div className="text-muted-foreground">
-                              {nextExercisePreview.sets} sets • {nextExercisePreview.reps}
+                    <CardContent className="space-y-3">
+                      <motion.div variants={listMotion} className="space-y-2">
+                        {WEEKDAYS.map((day) => (
+                          <motion.div
+                            key={day.key}
+                            variants={listItemMotion}
+                            className="rounded-xl border p-3"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                                  {day.label}
+                                </div>
+                                <div className="text-lg font-display">
+                                  {scheduledDayLabel(day.key)}
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-lg h-7 px-2 text-[11px]"
+                                  onClick={() => toggleRestDay(day.key)}
+                                >
+                                  {state.settings.schedule?.[day.key] === "rest" ? "Unset rest" : "Set rest"}
+                                </Button>
+                              </div>
                             </div>
-                            <div className="text-muted-foreground">{nextExercisePreview.rest}</div>
-                          </div>
-                        ) : (
-                          <div className="mt-2 text-sm text-muted-foreground">
-                            Select a workout to see what&apos;s next.
-                          </div>
-                        )}
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button className="rounded-xl" onClick={() => setScheduleDialogOpen(true)}>
+                          Edit schedule
+                        </Button>
+                        <Button variant="outline" className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
+                          Manage templates
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
                 </motion.div>
+              </motion.div>
+            </TabsContent>
+
+            <TabsContent value="workouts" className="mt-0">
+              <motion.div variants={pageMotion} initial="hidden" animate="show" className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
+                      Workouts
+                    </div>
+                    <div className="text-3xl font-display uppercase">Training</div>
+                  </div>
+                  <Button variant="outline" className="rounded-2xl" onClick={() => setActiveTab("dashboard")}>
+                    Today
+                  </Button>
+                </div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <ClipboardList className="h-5 w-5" /> Selected workouts
+                      </CardTitle>
+                      <CardDescription>Your active split and current day.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+                          Active split
+                        </span>
+                        {activeSplitLabel ? (
+                          <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em]">
+                            {activeSplitLabel}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">No split selected yet</span>
+                        )}
+                      </div>
+                      <div className="rounded-2xl border border-foreground/10 bg-background/70 p-3">
+                        <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                          Today&apos;s workout
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {todaysSplitTemplates.map((t) => (
+                            <Button
+                              key={t.id}
+                              size="sm"
+                              variant={t.id === dashboardTemplate?.id ? "default" : "outline"}
+                              className="rounded-full"
+                              onClick={() => {
+                                const dayKey = getWeekdayKey(sessionDate);
+                                setState((prev) => ({
+                                  ...prev,
+                                  settings: {
+                                    ...prev.settings,
+                                    schedule: {
+                                      ...(prev.settings.schedule || emptySchedule),
+                                      [dayKey]: t.id,
+                                    },
+                                    activeSplitKey: t.splitKey || prev.settings.activeSplitKey,
+                                  },
+                                }));
+                                setSelectedTemplateId(t.id);
+                              }}
+                            >
+                              {t.name}
+                            </Button>
+                          ))}
+                          {!todaysSplitTemplates.length ? (
+                            <span className="text-xs text-muted-foreground">
+                              No workouts for this split yet.
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <CalendarDays className="h-5 w-5" /> Weekly split
+                      </CardTitle>
+                      <CardDescription>Switch between saved splits and weekly programs.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {Object.keys(state.savedSplits || {}).length ? (
+                        <div className="space-y-2">
+                          {Object.entries(state.savedSplits || {}).map(([key, templates]) => {
+                            const daysForSplit = scheduledDayOptions.length
+                              ? scheduledDayOptions.map((d) => d.key)
+                              : WEEKDAYS.filter((d) => d.index !== 0).map((d) => d.key);
+                            const source =
+                              templates?.[0]?.source === "custom_split" ? "custom_split" : "generated";
+                            const isActiveSplit = key === state.settings.activeSplitKey;
+                            return (
+                              <div
+                                key={key}
+                                className={`rounded-xl border p-3 text-sm ${
+                                  isActiveSplit ? "border-primary/60 bg-primary/10" : ""
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="font-medium">{formatSplitLabel(key)}</div>
+                                  {isActiveSplit ? (
+                                    <Badge variant="secondary" className="rounded-full">
+                                      Active
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {templates.length} templates saved
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="rounded-xl"
+                                    onClick={() =>
+                                      replaceProgramTemplates(
+                                        templates,
+                                        daysForSplit as Weekday[],
+                                        key,
+                                        source
+                                      )
+                                    }
+                                  >
+                                    Use this split
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-xl"
+                                    onClick={() => deleteSavedSplit(key)}
+                                  >
+                                    Delete split
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">
+                          No saved splits yet. Generate one to get started.
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <ClipboardList className="h-5 w-5" /> My workouts
+                      </CardTitle>
+                      <CardDescription>Build workouts, create splits, and manage templates.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-wrap gap-2">
+                      <Button className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
+                        Manage templates
+                      </Button>
+                      <Button variant="outline" className="rounded-xl" onClick={() => setGeneratorOpen(true)}>
+                        Generate workouts
+                      </Button>
+                      <Button variant="outline" className="rounded-xl" onClick={() => setImportDialogOpen(true)}>
+                        Import data
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {!isCoach ? (
+                  <motion.div variants={cardMotion}>
+                    <Card className="rounded-2xl shadow-md card-glass">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Sparkles className="h-5 w-5" /> Coach access
+                        </CardTitle>
+                        <CardDescription>
+                          Connect to your coach and import assigned programs.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="space-y-2">
+                          <Label>Coach email</Label>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <Input
+                              value={coachLinkEmail}
+                              onChange={(e) => setCoachLinkEmail(e.target.value)}
+                              placeholder="coach@email.com"
+                            />
+                            <Button
+                              className="rounded-xl"
+                              onClick={async () => {
+                                if (!supabase || !authUser) return;
+                                const email = coachLinkEmail.trim();
+                                if (!email) return;
+                                const coachRes = await supabase
+                                  .from("profiles")
+                                  .select("user_id, role")
+                                  .eq("email", email)
+                                  .single();
+                                if (coachRes.error || coachRes.data?.role !== "coach") {
+                                  alert("Coach not found.");
+                                  return;
+                                }
+                                await supabase.from("coach_clients").insert({
+                                  coach_id: coachRes.data.user_id,
+                                  athlete_id: authUser.id,
+                                  athlete_email: authUser.email,
+                                });
+                                alert("Coach linked. Ask them to assign your program.");
+                                setCoachLinkEmail("");
+                              }}
+                            >
+                              Connect
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="rounded-xl border p-3 space-y-2">
+                          <div className="text-sm font-medium">Coach assignments</div>
+                          {athleteAssignments.length ? (
+                            <div className="space-y-2">
+                              {athleteAssignments.map((item) => (
+                                <div key={item.id} className="flex items-center justify-between text-sm">
+                                  <span className="font-medium">{item.template.name}</span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-xl"
+                                    onClick={() => {
+                                      const freshTemplate: Template = {
+                                        ...item.template,
+                                        id: uid(),
+                                        exercises: (item.template.exercises || []).map((ex) => ({
+                                          ...ex,
+                                          id: uid(),
+                                        })),
+                                        source: "coach",
+                                      };
+                                      setState((p) => ({
+                                        ...p,
+                                        templates: [freshTemplate, ...p.templates],
+                                      }));
+                                      setSelectedTemplateId(freshTemplate.id);
+                                      alert("Template added to your library.");
+                                    }}
+                                  >
+                                    Add
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">
+                              No assignments yet.
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
                 ) : null}
 
-                {!simpleMode ? (
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-edge">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Sparkles className="h-5 w-5" /> Smart Trainer notes
+                      </CardTitle>
+                      <CardDescription>
+                        Daily coaching cues. Add your focus points and reminders for this session.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <textarea
+                        className="w-full min-h-[96px] rounded-xl border border-border/70 bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                        placeholder="Smart Trainer cues for today..."
+                        value={state.settings.profile.coachNotes || ""}
+                        onChange={(e) =>
+                          setState((p) => ({
+                            ...p,
+                            settings: {
+                              ...p.settings,
+                              profile: { ...p.settings.profile, coachNotes: e.target.value },
+                            },
+                          }))
+                        }
+                      />
+                      <div className="text-xs text-muted-foreground">
+                        Example: tempo cues, focus muscles, or form reminders for today.
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-edge">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Sparkles className="h-5 w-5" /> Smart Trainer suggestions
+                      </CardTitle>
+                      <CardDescription>
+                        Accept or skip. Suggestions auto-adjust based on your last sessions.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {Object.keys(insights.suggestions).length === 0 ? (
+                        <div className="text-sm text-muted-foreground">
+                          Log a few workouts with top sets to unlock suggestions.
+                        </div>
+                      ) : (
+                        <motion.div variants={listMotion} className="space-y-2">
+                          {Object.entries(insights.suggestions).slice(0, 8).map(([name, s]) => (
+                            <motion.div key={name} variants={listItemMotion} className="rounded-2xl border p-3">
+                              <div className="font-medium">{name}</div>
+                              <div className="text-sm text-muted-foreground mt-1">
+                                Next: {s.next.weight}
+                                {state.settings.units} × {s.next.reps}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">{s.reason}</div>
+                            </motion.div>
+                          ))}
+                        </motion.div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-glass">
                 <CardHeader>
@@ -5715,51 +5901,15 @@ const headerStats = useMemo(() => {
                 </CardContent>
                   </Card>
                 </motion.div>
-                ) : null}
 
-              {!simpleMode && state.settings.powerliftingMode ? (
                 <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-glass">
+                  <Card className="rounded-2xl shadow-md card-edge">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                      <Dumbbell className="h-5 w-5" /> Big 3 1RM
+                      <Target className="h-5 w-5" /> Goals
                     </CardTitle>
-                    <CardDescription>Powerlifter snapshot for the week.</CardDescription>
+                    <CardDescription>Today’s focus and weekly targets.</CardDescription>
                   </CardHeader>
-                  <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {(
-                      [
-                        ["Squat", big3Stats.squat],
-                        ["Bench", big3Stats.bench],
-                        ["Deadlift", big3Stats.deadlift],
-                      ] as Array<[string, { name: string; value: number; date: string } | null]>
-                    ).map(([label, data]) => (
-                      <div key={label} className="rounded-xl border p-3">
-                        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                          {label}
-                        </div>
-                        <div className="text-2xl font-display">
-                          {data ? Math.round(data.value).toLocaleString() : "—"}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {data ? `${formatDate(data.date)} • ${data.name}` : "Log a top set"}
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                  </Card>
-                </motion.div>
-              ) : null}
-
-              {!simpleMode ? (
-              <motion.div variants={cardMotion}>
-                <Card className="rounded-2xl shadow-md card-edge">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                    <Target className="h-5 w-5" /> Goals
-                  </CardTitle>
-                  <CardDescription>Today’s focus and weekly targets.</CardDescription>
-                </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Button className="rounded-xl" onClick={() => setGoalDialogOpen(true)}>
@@ -5778,12 +5928,10 @@ const headerStats = useMemo(() => {
                   />
                 </CardContent>
                 </Card>
-              </motion.div>
-              ) : null}
+                </motion.div>
 
-              {!simpleMode ? (
-              <motion.div variants={cardMotion}>
-                <Card className="rounded-2xl shadow-md card-glass">
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
                     <TrendingUp className="h-5 w-5" /> Progress
@@ -5811,116 +5959,96 @@ const headerStats = useMemo(() => {
                   </div>
                 </CardContent>
                 </Card>
-              </motion.div>
-              ) : null}
+                </motion.div>
 
-              {!simpleMode ? (
-              <motion.div variants={cardMotion}>
-                <Card className="rounded-2xl shadow-md card-glass">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                      <Trophy className="h-5 w-5" /> Trophies
-                    </CardTitle>
-                    <CardDescription>Celebrate milestones and gym wins.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="text-muted-foreground">
-                        Unlocked {unlockedCount}/{ACHIEVEMENTS.length}
-                      </div>
-                      {latestAchievement ? (
-                        <div className="text-xs text-muted-foreground">
-                          Latest: {latestAchievement.title}
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Trophy className="h-5 w-5" /> Trophies
+                      </CardTitle>
+                      <CardDescription>Celebrate milestones and gym wins.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="text-muted-foreground">
+                          Unlocked {unlockedCount}/{ACHIEVEMENTS.length}
                         </div>
-                      ) : null}
-                    </div>
-                    <motion.div
-                      variants={listMotion}
-                      className="grid grid-cols-1 sm:grid-cols-3 gap-2"
-                    >
-                      {achievementsList
-                        .slice()
-                        .sort((a, b) => Number(!!b.unlockedAt) - Number(!!a.unlockedAt))
-                        .slice(0, 3)
-                        .map((a) => {
-                          const Icon = a.icon;
-                          return (
-                            <motion.div
-                              key={a.id}
-                              variants={listItemMotion}
-                              className={`rounded-xl border p-3 ${
-                                a.unlockedAt ? "" : "opacity-60"
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                                <Icon className="h-4 w-4" />
-                                {a.unlockedAt ? "Unlocked" : "Locked"}
-                              </div>
-                              <div className="mt-1 font-medium">{a.title}</div>
-                              <div className="text-xs text-muted-foreground">{a.description}</div>
-                            </motion.div>
-                          );
-                        })}
-                    </motion.div>
-                    <div className="text-xs text-muted-foreground">
-                      Unlock trophies by hitting PRs, stacking volume, and staying consistent.
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-              ) : null}
-
-              <motion.div variants={cardMotion}>
-                <Card className="rounded-2xl shadow-md">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                      <CalendarDays className="h-5 w-5" /> Weekly overview
-                    </CardTitle>
-                    <CardDescription>All assigned workouts and rest days.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <motion.div variants={listMotion} className="space-y-2">
-                      {WEEKDAYS.map((day) => (
-                        <motion.div
-                          key={day.key}
-                          variants={listItemMotion}
-                          className="rounded-xl border p-3"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                                {day.label}
-                              </div>
-                              <div className="text-lg font-display">
-                                {scheduledDayLabel(day.key)}
-                              </div>
-                            </div>
-                            <div className="flex flex-col items-end gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="rounded-lg h-7 px-2 text-[11px]"
-                                onClick={() => toggleRestDay(day.key)}
-                              >
-                                {state.settings.schedule?.[day.key] === "rest" ? "Unset rest" : "Set rest"}
-                              </Button>
-                            </div>
+                        {latestAchievement ? (
+                          <div className="text-xs text-muted-foreground">
+                            Latest: {latestAchievement.title}
                           </div>
-                        </motion.div>
+                        ) : null}
+                      </div>
+                      <motion.div
+                        variants={listMotion}
+                        className="grid grid-cols-1 sm:grid-cols-3 gap-2"
+                      >
+                        {achievementsList
+                          .slice()
+                          .sort((a, b) => Number(!!b.unlockedAt) - Number(!!a.unlockedAt))
+                          .slice(0, 3)
+                          .map((a) => {
+                            const Icon = a.icon;
+                            return (
+                              <motion.div
+                                key={a.id}
+                                variants={listItemMotion}
+                                className={`rounded-xl border p-3 ${
+                                  a.unlockedAt ? "" : "opacity-60"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                                  <Icon className="h-4 w-4" />
+                                  {a.unlockedAt ? "Unlocked" : "Locked"}
+                                </div>
+                                <div className="mt-1 font-medium">{a.title}</div>
+                                <div className="text-xs text-muted-foreground">{a.description}</div>
+                              </motion.div>
+                            );
+                          })}
+                      </motion.div>
+                      <div className="text-xs text-muted-foreground">
+                        Unlock trophies by hitting PRs, stacking volume, and staying consistent.
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {state.settings.powerliftingMode ? (
+                  <motion.div variants={cardMotion}>
+                    <Card className="rounded-2xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Dumbbell className="h-5 w-5" /> Big 3 1RM
+                      </CardTitle>
+                      <CardDescription>Powerlifter snapshot for the week.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {(
+                        [
+                          ["Squat", big3Stats.squat],
+                          ["Bench", big3Stats.bench],
+                          ["Deadlift", big3Stats.deadlift],
+                        ] as Array<[string, { name: string; value: number; date: string } | null]>
+                      ).map(([label, data]) => (
+                        <div key={label} className="rounded-xl border p-3">
+                          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                            {label}
+                          </div>
+                          <div className="text-2xl font-display">
+                            {data ? Math.round(data.value).toLocaleString() : "—"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {data ? `${formatDate(data.date)} • ${data.name}` : "Log a top set"}
+                          </div>
+                        </div>
                       ))}
-                    </motion.div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button className="rounded-xl" onClick={() => setScheduleDialogOpen(true)}>
-                        Edit schedule
-                      </Button>
-                      <Button variant="outline" className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
-                        Manage templates
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                    </Card>
+                  </motion.div>
+                ) : null}
               </motion.div>
-            </motion.div>
             </TabsContent>
 
             {!simpleMode ? (
@@ -5935,6 +6063,9 @@ const headerStats = useMemo(() => {
                       <div className="text-3xl font-display uppercase">Social</div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                      <Button size="sm" variant="outline" className="rounded-full" onClick={() => setActiveTab("profile")}>
+                        <User className="h-4 w-4 mr-2" /> Profile
+                      </Button>
                       <Button size="sm" variant="outline" className="rounded-full" onClick={() => setSocialFriendsOpen(true)}>
                         <UserPlus className="h-4 w-4 mr-2" /> Friends
                         {friendRequests.length ? (
@@ -6684,305 +6815,6 @@ const headerStats = useMemo(() => {
                     </CardContent>
                   </Card>
                 </motion.div>
-
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-glass">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <ClipboardList className="h-5 w-5" /> My workouts
-                      </CardTitle>
-                      <CardDescription>Build workouts, create splits, and manage templates.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex flex-wrap gap-2">
-                      <Button className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
-                        Manage templates
-                      </Button>
-                      <Button variant="outline" className="rounded-xl" onClick={() => setGeneratorOpen(true)}>
-                        Generate workouts
-                      </Button>
-                      <Button variant="outline" className="rounded-xl" onClick={() => setImportDialogOpen(true)}>
-                        Import data
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-glass">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <CalendarDays className="h-5 w-5" /> Weekly split
-                      </CardTitle>
-                      <CardDescription>Switch between saved splits and weekly programs.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {Object.keys(state.savedSplits || {}).length ? (
-                        <div className="space-y-2">
-                          {Object.entries(state.savedSplits || {}).map(([key, templates]) => {
-                            const daysForSplit = scheduledDayOptions.length
-                              ? scheduledDayOptions.map((d) => d.key)
-                              : WEEKDAYS.filter((d) => d.index !== 0).map((d) => d.key);
-                            const source =
-                              templates?.[0]?.source === "custom_split" ? "custom_split" : "generated";
-                            const isActiveSplit = key === state.settings.activeSplitKey;
-                            return (
-                              <div
-                                key={key}
-                                className={`rounded-xl border p-3 text-sm ${
-                                  isActiveSplit ? "border-primary/60 bg-primary/10" : ""
-                                }`}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="font-medium">{formatSplitLabel(key)}</div>
-                                  {isActiveSplit ? (
-                                    <Badge variant="secondary" className="rounded-full">
-                                      Active
-                                    </Badge>
-                                  ) : null}
-                                </div>
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  {templates.length} templates saved
-                                </div>
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  <Button
-                                    size="sm"
-                                    className="rounded-xl"
-                                    onClick={() =>
-                                      replaceProgramTemplates(
-                                        templates,
-                                        daysForSplit as Weekday[],
-                                        key,
-                                        source
-                                      )
-                                    }
-                                  >
-                                    Use this split
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="rounded-xl"
-                                    onClick={() => deleteSavedSplit(key)}
-                                  >
-                                    Delete split
-                                  </Button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="text-xs text-muted-foreground">
-                          No saved splits yet. Generate one to get started.
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                {!isCoach ? (
-                  <motion.div variants={cardMotion}>
-                    <Card className="rounded-2xl shadow-md card-glass">
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <Sparkles className="h-5 w-5" /> Coach access
-                        </CardTitle>
-                        <CardDescription>
-                          Connect to your coach and import assigned programs.
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="space-y-2">
-                          <Label>Coach email</Label>
-                          <div className="flex flex-col sm:flex-row gap-2">
-                            <Input
-                              value={coachLinkEmail}
-                              onChange={(e) => setCoachLinkEmail(e.target.value)}
-                              placeholder="coach@email.com"
-                            />
-                            <Button
-                              className="rounded-xl"
-                              onClick={async () => {
-                                if (!supabase || !authUser) return;
-                                const email = coachLinkEmail.trim();
-                                if (!email) return;
-                                const coachRes = await supabase
-                                  .from("profiles")
-                                  .select("user_id, role")
-                                  .eq("email", email)
-                                  .single();
-                                if (coachRes.error || coachRes.data?.role !== "coach") {
-                                  alert("Coach not found.");
-                                  return;
-                                }
-                                await supabase.from("coach_clients").insert({
-                                  coach_id: coachRes.data.user_id,
-                                  athlete_id: authUser.id,
-                                  athlete_email: authUser.email,
-                                });
-                                alert("Coach linked. Ask them to assign your program.");
-                                setCoachLinkEmail("");
-                              }}
-                            >
-                              Connect
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="rounded-xl border p-3 space-y-2">
-                          <div className="text-sm font-medium">Coach assignments</div>
-                          {athleteAssignments.length ? (
-                            <div className="space-y-2">
-                              {athleteAssignments.map((item) => (
-                                <div key={item.id} className="flex items-center justify-between text-sm">
-                                  <span className="font-medium">{item.template.name}</span>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="rounded-xl"
-                                    onClick={() => {
-                                      const freshTemplate: Template = {
-                                        ...item.template,
-                                        id: uid(),
-                                        exercises: (item.template.exercises || []).map((ex) => ({
-                                          ...ex,
-                                          id: uid(),
-                                        })),
-                                        source: "coach",
-                                      };
-                                      setState((p) => ({
-                                        ...p,
-                                        templates: [freshTemplate, ...p.templates],
-                                      }));
-                                      setSelectedTemplateId(freshTemplate.id);
-                                      alert("Template added to your library.");
-                                    }}
-                                  >
-                                    Add
-                                  </Button>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-xs text-muted-foreground">
-                              No assignments yet.
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ) : null}
-
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-glass">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <Dumbbell className="h-5 w-5" /> Create your own split
-                      </CardTitle>
-                      <CardDescription>
-                        Build a custom weekly split and save it for later.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <Input
-                        value={customSplitName}
-                        onChange={(e) => setCustomSplitName(e.target.value)}
-                        placeholder="Split name (e.g., Lift & Sculpt)"
-                      />
-                      <div className="flex flex-wrap gap-2">
-                        {WEEKDAYS.map((day) => (
-                          <Button
-                            key={day.key}
-                            type="button"
-                            size="sm"
-                            variant={customSplitDays.includes(day.key) ? "secondary" : "outline"}
-                            className="rounded-xl"
-                            onClick={() => toggleCustomSplitDay(day.key)}
-                          >
-                            {day.short}
-                          </Button>
-                        ))}
-                      </div>
-                      <Button
-                        className="rounded-xl w-full"
-                        onClick={() => {
-                          if (!customSplitDays.length) {
-                            alert("Pick at least one day first.");
-                            return;
-                          }
-                          const name = customSplitName.trim() || "My Split";
-                          const splitKey = `custom|${name}|${customSplitDays.join("-") || "days"}`;
-                          const templates = customSplitDays.map((day, idx) => {
-                            const label =
-                              WEEKDAYS.find((d) => d.key === day)?.label || `Day ${idx + 1}`;
-                            return {
-                              id: uid(),
-                              name: `${name} • ${label}`,
-                              exercises: [],
-                            } as Template;
-                          });
-                          replaceProgramTemplates(templates, customSplitDays, splitKey, "custom_split");
-                          setSplitWizard({
-                            title: name,
-                            templateIds: templates.map((t) => t.id),
-                          });
-                        }}
-                      >
-                        Create custom split
-                      </Button>
-                      <div className="text-xs text-muted-foreground">
-                        Your split is saved locally. You can switch back anytime.
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-minimal">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <Trophy className="h-5 w-5" /> Trophy cabinet
-                      </CardTitle>
-                      <CardDescription>Track every milestone you unlock.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="text-sm text-muted-foreground">
-                        Unlocked {unlockedCount}/{ACHIEVEMENTS.length}
-                      </div>
-                      <motion.div variants={listMotion} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {achievementsList
-                          .slice()
-                          .sort((a, b) => Number(!!b.unlockedAt) - Number(!!a.unlockedAt))
-                          .map((a) => {
-                            const Icon = a.icon;
-                            return (
-                              <motion.div
-                                key={a.id}
-                                variants={listItemMotion}
-                                className={`rounded-xl border p-3 ${
-                                  a.unlockedAt ? "" : "opacity-60"
-                                }`}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                                    <Icon className="h-4 w-4" />
-                                    {a.unlockedAt ? "Unlocked" : "Locked"}
-                                  </div>
-                                  {a.unlockedAt ? (
-                                    <span className="text-[10px] text-muted-foreground">
-                                      {formatDate(a.unlockedAt)}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <div className="mt-1 font-medium">{a.title}</div>
-                                <div className="text-xs text-muted-foreground">{a.description}</div>
-                              </motion.div>
-                            );
-                          })}
-                      </motion.div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
               </motion.div>
             </TabsContent>
             ) : null}
@@ -6999,281 +6831,304 @@ const headerStats = useMemo(() => {
                 </div>
 
                 <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Sparkles className="h-5 w-5" /> Modes
+                      </CardTitle>
+                      <CardDescription>Switch between focus levels and roles.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center justify-between rounded-xl border p-3">
+                        <div>
+                          <div className="text-sm font-medium">Simple mode</div>
+                          <div className="text-xs text-muted-foreground">
+                            Hide social and extra tools for fast training.
+                          </div>
+                        </div>
+                        <Switch
+                          checked={!!state.settings.simpleMode}
+                          onCheckedChange={(v) =>
+                            setState((p) => ({
+                              ...p,
+                              settings: { ...p.settings, simpleMode: v },
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="rounded-xl border p-3 space-y-2">
+                        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Role</div>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { key: "athlete", label: "Athlete" },
+                            { key: "smart_trainer", label: "Smart Trainer" },
+                            { key: "coach", label: "Coach" },
+                          ].map((item) => (
+                            <Button
+                              key={item.key}
+                              size="sm"
+                              variant={state.settings.role === item.key ? "secondary" : "outline"}
+                              className="rounded-full"
+                              onClick={() =>
+                                setState((p) => ({
+                                  ...p,
+                                  settings: { ...p.settings, role: item.key as UserRole },
+                                }))
+                              }
+                            >
+                              {item.label}
+                            </Button>
+                          ))}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Coach mode is for verified trainers managing clients.
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-minimal">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                    <SettingsIcon className="h-5 w-5" /> Controls
-                  </CardTitle>
-                  <CardDescription>Manage templates, themes, and exports.</CardDescription>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <motion.div variants={listMotion} className="contents">
-                    <motion.div variants={listItemMotion}>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <SettingsIcon className="h-5 w-5" /> Account
+                      </CardTitle>
+                      <CardDescription>Profile, privacy, and app settings.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
                       <Button className="rounded-xl" onClick={() => setSettingsDialogOpen(true)}>
                         Account & settings
                       </Button>
-                    </motion.div>
-                    {!simpleMode ? (
-                      <>
-                        <motion.div variants={listItemMotion}>
-                          <Button variant="outline" className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
-                            Workout templates
-                          </Button>
-                        </motion.div>
-                        <motion.div variants={listItemMotion}>
-                          <Button variant="outline" className="rounded-xl" onClick={() => setGeneratorOpen(true)}>
-                            Generate workouts
-                          </Button>
-                        </motion.div>
-                        <motion.div variants={listItemMotion}>
-                          <Button variant="outline" className="rounded-xl" onClick={() => setImportDialogOpen(true)}>
-                            Import data
-                          </Button>
-                        </motion.div>
-                        <motion.div variants={listItemMotion}>
-                          <Button variant="outline" className="rounded-xl" onClick={exportData}>
-                            Export data
-                          </Button>
-                        </motion.div>
-                      </>
-                    ) : null}
-                  </motion.div>
-                </CardContent>
+                    </CardContent>
                   </Card>
                 </motion.div>
 
                 {!simpleMode ? (
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                    <History className="h-5 w-5" /> Training history
-                  </CardTitle>
-                  <CardDescription>Search and review past sessions.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="relative">
-                    <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
-                    <Input
-                      className="pl-9"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search templates, dates, exercises…"
-                    />
-                  </div>
-                  {filteredSessions.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">No sessions yet.</div>
-                  ) : (
-                    <motion.div variants={listMotion} className="space-y-3">
-                      {filteredSessions.map((s) => (
-                        <motion.div key={s.id} variants={listItemMotion}>
-                          <SessionCard
-                            session={s}
-                            units={state.settings.units}
-                            onDelete={() => deleteSession(s.id)}
-                          />
-                        </motion.div>
-                      ))}
-                    </motion.div>
-                  )}
-                  </CardContent>
-                </Card>
-                </motion.div>
-                ) : null}
+                  <details className="rounded-2xl border border-foreground/10 bg-card/70 p-4">
+                    <summary className="cursor-pointer text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                      More tools
+                    </summary>
+                    <div className="mt-4 space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <Button variant="outline" className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
+                          Workout templates
+                        </Button>
+                        <Button variant="outline" className="rounded-xl" onClick={() => setGeneratorOpen(true)}>
+                          Generate workouts
+                        </Button>
+                        <Button variant="outline" className="rounded-xl" onClick={() => setImportDialogOpen(true)}>
+                          Import data
+                        </Button>
+                        <Button variant="outline" className="rounded-xl" onClick={exportData}>
+                          Export data
+                        </Button>
+                      </div>
 
-              {!simpleMode && isCoach ? (
-                <motion.div variants={listMotion} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <motion.div variants={cardMotion}>
-                    <Card className="rounded-2xl shadow-md">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <ClipboardList className="h-5 w-5" /> Coach clients
-                      </CardTitle>
-                      <CardDescription>
-                        Add clients and assign templates in one place.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="flex flex-col gap-2">
-                        <Label>Invite client by email</Label>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <Input
-                            value={coachInviteEmail}
-                            onChange={(e) => setCoachInviteEmail(e.target.value)}
-                            placeholder="client@email.com"
-                          />
-                          <Button
-                            className="rounded-xl"
-                            onClick={async () => {
-                              if (!supabase || !authUser) return;
-                              const email = coachInviteEmail.trim();
-                              if (!email) return;
-                              await supabase.from("coach_clients").insert({
-                                coach_id: authUser.id,
-                                athlete_email: email,
-                              });
-                              setCoachInviteEmail("");
-                              const res = await supabase
-                                .from("coach_clients")
-                                .select("athlete_id, athlete_email")
-                                .eq("coach_id", authUser.id);
-                              if (!res.error) {
-                                setCoachClients(
-                                  (res.data || []).map((c: any) => ({
-                                    athleteId: c.athlete_id,
-                                    email: c.athlete_email,
-                                  }))
-                                );
-                              }
-                            }}
-                          >
-                            Add
-                          </Button>
+                      <div className="rounded-2xl border border-foreground/10 p-3">
+                        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                          Training history
+                        </div>
+                        <div className="mt-3 space-y-3">
+                          <div className="relative">
+                            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
+                            <Input
+                              className="pl-9"
+                              value={search}
+                              onChange={(e) => setSearch(e.target.value)}
+                              placeholder="Search templates, dates, exercises…"
+                            />
+                          </div>
+                          {filteredSessions.length === 0 ? (
+                            <div className="text-sm text-muted-foreground">No sessions yet.</div>
+                          ) : (
+                            <motion.div variants={listMotion} className="space-y-3">
+                              {filteredSessions.map((s) => (
+                                <motion.div key={s.id} variants={listItemMotion}>
+                                  <SessionCard
+                                    session={s}
+                                    units={state.settings.units}
+                                    onDelete={() => deleteSession(s.id)}
+                                  />
+                                </motion.div>
+                              ))}
+                            </motion.div>
+                          )}
                         </div>
                       </div>
-                      {coachClients.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">
-                          No clients yet. Add an email to invite someone.
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {coachClients.map((c) => (
-                            <div key={c.email} className="rounded-xl border p-3 text-sm">
-                              <div className="font-medium">{c.email}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {c.athleteId ? "Connected" : "Pending connection"}
-                              </div>
-                              <div className="mt-2 flex items-center gap-2">
-                                <Select
-                                  onValueChange={async (v) => {
-                                    const template = state.templates.find((t) => t.id === v);
-                                    if (!template || !supabase || !authUser) return;
-                                    if (!c.athleteId) {
-                                      alert("Client hasn't connected yet.");
-                                      return;
-                                    }
-                                    await supabase.from("coach_assignments").insert({
+
+                      {isCoach ? (
+                        <div className="rounded-2xl border border-foreground/10 p-3 space-y-3">
+                          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                            Coach tools
+                          </div>
+                          <div className="space-y-3">
+                            <div className="flex flex-col gap-2">
+                              <Label>Invite client by email</Label>
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                <Input
+                                  value={coachInviteEmail}
+                                  onChange={(e) => setCoachInviteEmail(e.target.value)}
+                                  placeholder="client@email.com"
+                                />
+                                <Button
+                                  className="rounded-xl"
+                                  onClick={async () => {
+                                    if (!supabase || !authUser) return;
+                                    const email = coachInviteEmail.trim();
+                                    if (!email) return;
+                                    await supabase.from("coach_clients").insert({
                                       coach_id: authUser.id,
-                                      athlete_id: c.athleteId,
-                                      template_id: template.id,
-                                      template_name: template.name,
-                                      template,
+                                      athlete_email: email,
                                     });
-                                    const assignRes = await supabase
-                                      .from("coach_assignments")
-                                      .select("id, athlete_id, template_name")
-                                      .eq("coach_id", authUser.id)
-                                      .order("created_at", { ascending: false })
-                                      .limit(6);
-                                    if (!assignRes.error) {
-                                      setCoachAssignments(
-                                        (assignRes.data || []).map((a: any) => ({
-                                          id: a.id,
-                                          athleteId: a.athlete_id,
-                                          templateName: a.template_name,
+                                    setCoachInviteEmail("");
+                                    const res = await supabase
+                                      .from("coach_clients")
+                                      .select("athlete_id, athlete_email")
+                                      .eq("coach_id", authUser.id);
+                                    if (!res.error) {
+                                      setCoachClients(
+                                        (res.data || []).map((c: any) => ({
+                                          athleteId: c.athlete_id,
+                                          email: c.athlete_email,
                                         }))
                                       );
                                     }
                                   }}
                                 >
-                                  <SelectTrigger className="w-[180px]">
-                                    <SelectValue placeholder="Assign template" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {state.templates.map((t) => (
-                                      <SelectItem key={t.id} value={t.id}>
-                                        {t.name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <Button
-                                  variant="outline"
-                                  className="rounded-xl"
-                                  onClick={async () => {
-                                    if (!supabase || !c.athleteId) return;
-                                    const sessionsRes = await supabase
-                                      .from("user_sessions")
-                                      .select("session")
-                                      .eq("user_id", c.athleteId);
-                                    if (sessionsRes.error) return;
-                                    const sessions = (sessionsRes.data || []).map(
-                                      (row: any) => row.session as Session
-                                    );
-                                    const stats = buildSessionStats(sessions);
-                                    setCoachClientProgress({
-                                      athleteId: c.athleteId,
-                                      sessions: stats.totalSessions,
-                                      lastDate: stats.lastLabel,
-                                      volume7d: stats.vol7d,
-                                    });
-                                  }}
-                                  disabled={!c.athleteId}
-                                >
-                                  View progress
+                                  Add
                                 </Button>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                    </Card>
-                  </motion.div>
-
-                  <motion.div variants={cardMotion}>
-                    <Card className="rounded-2xl shadow-md">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <TrendingUp className="h-5 w-5" /> Coach insights
-                      </CardTitle>
-                      <CardDescription>
-                        See client progress and recent assignments.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {coachClientProgress ? (
-                        <div className="rounded-xl border p-3 space-y-2">
-                        <div className="text-sm font-medium">Client summary</div>
-                          <div className="grid grid-cols-2 gap-2 text-sm">
-                            <div className="rounded-lg border p-2">
-                              Sessions: {coachClientProgress.sessions}
-                            </div>
-                            <div className="rounded-lg border p-2">
-                              Last: {coachClientProgress.lastDate}
-                            </div>
-                            <div className="rounded-lg border p-2">
-                              7d Volume: {Math.round(coachClientProgress.volume7d).toLocaleString()}
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-muted-foreground">
-                          Pick a connected client and click “View progress”.
-                        </div>
-                      )}
-                      <div className="rounded-xl border p-3 space-y-2">
-                        <div className="text-sm font-medium">Recent assignments</div>
-                        {coachAssignments.length ? (
-                          <div className="space-y-2 text-sm">
-                            {coachAssignments.map((a) => (
-                              <div key={a.id} className="flex items-center justify-between">
-                                <span className="font-medium">{a.templateName}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {a.athleteId ? "Assigned" : "Pending"}
-                                </span>
+                            {coachClients.length === 0 ? (
+                              <div className="text-sm text-muted-foreground">
+                                No clients yet. Add an email to invite someone.
                               </div>
-                            ))}
+                            ) : (
+                              <div className="space-y-2">
+                                {coachClients.map((c) => (
+                                  <div key={c.email} className="rounded-xl border p-3 text-sm">
+                                    <div className="font-medium">{c.email}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {c.athleteId ? "Connected" : "Pending connection"}
+                                    </div>
+                                    <div className="mt-2 flex items-center gap-2">
+                                      <Select
+                                        onValueChange={async (v) => {
+                                          const template = state.templates.find((t) => t.id === v);
+                                          if (!template || !supabase || !authUser) return;
+                                          if (!c.athleteId) {
+                                            alert("Client hasn't connected yet.");
+                                            return;
+                                          }
+                                          await supabase.from("coach_assignments").insert({
+                                            coach_id: authUser.id,
+                                            athlete_id: c.athleteId,
+                                            template_id: template.id,
+                                            template_name: template.name,
+                                            template,
+                                          });
+                                          const assignRes = await supabase
+                                            .from("coach_assignments")
+                                            .select("id, athlete_id, template_name")
+                                            .eq("coach_id", authUser.id)
+                                            .order("created_at", { ascending: false })
+                                            .limit(6);
+                                          if (!assignRes.error) {
+                                            setCoachAssignments(
+                                              (assignRes.data || []).map((a: any) => ({
+                                                id: a.id,
+                                                athleteId: a.athlete_id,
+                                                templateName: a.template_name,
+                                              }))
+                                            );
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger className="w-[180px]">
+                                          <SelectValue placeholder="Assign template" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {state.templates.map((t) => (
+                                            <SelectItem key={t.id} value={t.id}>
+                                              {t.name}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                      <Button
+                                        variant="outline"
+                                        className="rounded-xl"
+                                        onClick={async () => {
+                                          if (!supabase || !c.athleteId) return;
+                                          const sessionsRes = await supabase
+                                            .from("user_sessions")
+                                            .select("session")
+                                            .eq("user_id", c.athleteId);
+                                          if (sessionsRes.error) return;
+                                          const sessions = (sessionsRes.data || []).map(
+                                            (row: any) => row.session as Session
+                                          );
+                                          const stats = buildSessionStats(sessions);
+                                          setCoachClientProgress({
+                                            athleteId: c.athleteId,
+                                            sessions: stats.totalSessions,
+                                            lastDate: stats.lastLabel,
+                                            volume7d: stats.vol7d,
+                                          });
+                                        }}
+                                        disabled={!c.athleteId}
+                                      >
+                                        View progress
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div className="rounded-xl border p-3 space-y-2">
+                              <div className="text-sm font-medium">Coach insights</div>
+                              {coachClientProgress ? (
+                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                  <div className="rounded-lg border p-2">
+                                    Sessions: {coachClientProgress.sessions}
+                                  </div>
+                                  <div className="rounded-lg border p-2">
+                                    Last: {coachClientProgress.lastDate}
+                                  </div>
+                                  <div className="rounded-lg border p-2">
+                                    7d Volume: {Math.round(coachClientProgress.volume7d).toLocaleString()}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-xs text-muted-foreground">
+                                  Pick a connected client and click “View progress”.
+                                </div>
+                              )}
+                              <div className="rounded-xl border p-3 space-y-2">
+                                <div className="text-sm font-medium">Recent assignments</div>
+                                {coachAssignments.length ? (
+                                  <div className="space-y-2 text-sm">
+                                    {coachAssignments.map((a) => (
+                                      <div key={a.id} className="flex items-center justify-between">
+                                        <span className="font-medium">{a.templateName}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                          {a.athleteId ? "Assigned" : "Pending"}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground">No assignments yet.</div>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        ) : (
-                          <div className="text-xs text-muted-foreground">No assignments yet.</div>
-                        )}
-                      </div>
-                    </CardContent>
-                    </Card>
-                  </motion.div>
-                </motion.div>
-              ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  </details>
+                ) : null}
             </motion.div>
             </TabsContent>
           </Tabs>
@@ -7291,19 +7146,16 @@ const headerStats = useMemo(() => {
               <Home className="h-5 w-5" />
               Home
             </button>
-            {!simpleMode ? (
-              <button
-                type="button"
-                className={`flex min-w-[64px] flex-col items-center gap-1 text-[0.65rem] uppercase tracking-[0.2em] ${
-                  activeTab === "social" ? "text-foreground" : "text-muted-foreground"
-                }`}
-                onClick={() => setActiveTab("social")}
-              >
-                <Heart className="h-5 w-5" />
-                Social
-              </button>
-            ) : null}
-
+            <button
+              type="button"
+              className={`flex min-w-[64px] flex-col items-center gap-1 text-[0.65rem] uppercase tracking-[0.2em] ${
+                activeTab === "workouts" ? "text-foreground" : "text-muted-foreground"
+              }`}
+              onClick={() => setActiveTab("workouts")}
+            >
+              <ClipboardList className="h-5 w-5" />
+              Workouts
+            </button>
             <button
               type="button"
               className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_18px_36px_rgba(0,0,0,0.35)] ring-1 ring-primary/40"
@@ -7316,12 +7168,12 @@ const headerStats = useMemo(() => {
               <button
                 type="button"
                 className={`flex min-w-[64px] flex-col items-center gap-1 text-[0.65rem] uppercase tracking-[0.2em] ${
-                  activeTab === "profile" ? "text-foreground" : "text-muted-foreground"
+                  activeTab === "social" ? "text-foreground" : "text-muted-foreground"
                 }`}
-                onClick={() => setActiveTab("profile")}
+                onClick={() => setActiveTab("social")}
               >
-                <User className="h-5 w-5" />
-                Profile
+                <Heart className="h-5 w-5" />
+                Social
               </button>
             ) : null}
             <button

@@ -178,6 +178,7 @@ type Profile = {
   favoriteExercises?: string[];
   recentExercises?: string[];
   username?: string;
+  avatarUrl?: string;
   shareWorkouts?: boolean;
   sharePRs?: boolean;
   shareWeighIns?: boolean;
@@ -198,6 +199,7 @@ type Settings = {
   role: UserRole;
   theme: Theme;
   schedule: WeekSchedule;
+  activeSplitKey?: string;
   profile: Profile;
 };
 
@@ -597,6 +599,13 @@ const e1rm = (weight: number, reps: number) => {
 const roundTo = (n: number, step = 0.5) => {
   const v = Number(n) || 0;
   return Math.round(v / step) * step;
+};
+
+const formatHeightValue = (inches: number, units: Units) => {
+  if (units === "kg") return `${Math.round(inches)} cm`;
+  const feet = Math.floor(inches / 12) || 0;
+  const remainder = Math.round(inches % 12);
+  return `${feet} ft ${remainder} in`;
 };
 
 const formatMMSS = (totalSeconds: number) => {
@@ -1834,6 +1843,7 @@ const defaultState: AppState = {
       favoriteExercises: [],
       recentExercises: [],
       username: "",
+      avatarUrl: "",
       shareWorkouts: true,
       sharePRs: true,
       shareWeighIns: false,
@@ -1997,6 +2007,9 @@ useEffect(() => {
 
   // dialogs
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [splitWizard, setSplitWizard] = useState<null | { title: string; templateIds: string[] }>(
+    null
+  );
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [goalDialogOpen, setGoalDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -2073,6 +2086,8 @@ useEffect(() => {
   const [socialFriendsOpen, setSocialFriendsOpen] = useState(false);
   const [socialMessagesOpen, setSocialMessagesOpen] = useState(false);
   const [socialInvitesOpen, setSocialInvitesOpen] = useState(false);
+  const [inviteFriendId, setInviteFriendId] = useState("");
+  const [inviteTemplateId, setInviteTemplateId] = useState("");
   const [socialChallengesOpen, setSocialChallengesOpen] = useState(false);
   const [customSplitName, setCustomSplitName] = useState("My Split");
   const [customSplitDays, setCustomSplitDays] = useState<Weekday[]>(["mon", "wed", "fri"]);
@@ -2334,7 +2349,7 @@ useEffect(() => {
         return {
           ...p,
           templates: [...nextTemplates, ...kept],
-          settings: { ...p.settings, schedule: nextSchedule },
+          settings: { ...p.settings, schedule: nextSchedule, activeSplitKey: splitKey },
           savedSplits: { ...savedSplits, [splitKey]: nextTemplates },
         };
       });
@@ -3140,6 +3155,10 @@ useEffect(() => {
     weighInRange.min,
     weighInRange.max
   );
+  const weighInQuickValues = useMemo(
+    () => recentWeighIns.map((w) => w.weight).slice(0, 5),
+    [recentWeighIns]
+  );
 
   const saveWeighIn = () => {
     const value = Number(weighInInput);
@@ -3291,6 +3310,17 @@ useEffect(() => {
     () => getScheduleInfo(sessionDate, state.templates || [], state.settings.schedule),
     [sessionDate, state.templates, state.settings.schedule]
   );
+  const todaysSplitTemplates = useMemo(() => {
+    const programTemplates = (state.templates || []).filter(isProgramTemplate);
+    if (!programTemplates.length) return [];
+    const scheduled = scheduleInfo.templateId
+      ? programTemplates.find((t) => t.id === scheduleInfo.templateId)
+      : undefined;
+    const splitKey =
+      scheduled?.splitKey || programTemplates.find((t) => t.splitKey)?.splitKey;
+    if (!splitKey) return [];
+    return programTemplates.filter((t) => t.splitKey === splitKey);
+  }, [state.templates, scheduleInfo.templateId]);
 
   const triggerHaptic = (pattern: number | number[]) => {
     if (typeof navigator === "undefined") return;
@@ -3308,6 +3338,18 @@ useEffect(() => {
     const schedule = state.settings.schedule || emptySchedule;
     return WEEKDAYS.filter((day) => Boolean(schedule[day.key]));
   }, [state.settings.schedule]);
+  const activeSplitLabel = useMemo(() => {
+    const key = state.settings.activeSplitKey;
+    if (!key) return "";
+    return formatSplitLabel(key);
+  }, [state.settings.activeSplitKey]);
+
+  useEffect(() => {
+    if (!socialInvitesOpen) return;
+    if (!inviteTemplateId && state.templates.length) {
+      setInviteTemplateId(state.templates[0].id);
+    }
+  }, [socialInvitesOpen, inviteTemplateId, state.templates]);
 
   const updateProfile = useCallback((partial: Partial<Profile>) => {
     setState((p) => {
@@ -3328,6 +3370,23 @@ useEffect(() => {
       };
     });
   }, []);
+
+  const handleAvatarChange = useCallback(
+    (file?: File | null) => {
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        alert("Please choose an image file.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        updateProfile({ avatarUrl: result });
+      };
+      reader.readAsDataURL(file);
+    },
+    [updateProfile]
+  );
 
   const formatSplitLabel = (splitKey: string) => {
     if (splitKey.startsWith("custom|")) {
@@ -3475,12 +3534,32 @@ useEffect(() => {
     [supabase]
   );
 
+  const sendWorkoutInvite = useCallback(async () => {
+    if (!supabase || !authUser || !inviteFriendId || !inviteTemplateId) return;
+    const template = state.templates.find((t) => t.id === inviteTemplateId);
+    if (!template) return;
+    const payload = {
+      sender_id: authUser.id,
+      recipient_id: inviteFriendId,
+      template,
+      status: "pending",
+    };
+    const { error } = await supabase.from("workout_invites").insert(payload);
+    if (error) {
+      alert("Invite failed. Try again.");
+      return;
+    }
+    alert("Invite sent.");
+    setInviteFriendId("");
+    setInviteTemplateId("");
+  }, [authUser, inviteFriendId, inviteTemplateId, state.templates, supabase]);
+
   const scheduledDayLabel = (key: Weekday) => {
     const schedule = state.settings.schedule || emptySchedule;
     const entry = schedule[key];
     if (entry === "rest") return `${key.toUpperCase()} • Rest`;
     const match = state.templates.find((t) => t.id === entry);
-    return match ? `${key.toUpperCase()} • ${match.name}` : key.toUpperCase();
+    return match ? `${key.toUpperCase()} • ${match.name}` : `${key.toUpperCase()} • Unassigned`;
   };
 
   const setScheduleDay = (day: Weekday, value: string) => {
@@ -3553,6 +3632,23 @@ useEffect(() => {
     return [0.4, 0.6, 0.8].map((pct) => round(base * pct));
   }, [currentGymEntry, currentGymSet?.weight, exerciseHistory, state.settings.units]);
 
+  const weightConfig = getWeightSliderConfig(state.settings.units);
+  const weightStep =
+    currentGymEntry?.templateHint?.weightStep || weightConfig.step;
+  const weightValue = Number(currentGymSet?.weight) || 0;
+  const historyTop = currentGymEntry
+    ? exerciseHistory[currentGymEntry.exerciseName]?.[0]?.topSet?.weight || 0
+    : 0;
+  const weightQuickValues = useMemo(() => {
+    const presets =
+      state.settings.units === "lb"
+        ? [45, 95, 135, 185, 225, 275]
+        : [20, 40, 60, 80, 100, 120];
+    return [historyTop, ...presets]
+      .filter((v) => v > 0)
+      .map((v) => roundTo(v, weightStep));
+  }, [historyTop, state.settings.units, weightStep]);
+
   const updateGymSet = (patch: Partial<WorkingEntry["sets"][number]>) => {
     if (!currentGymEntry || !currentGymStep) return;
     setWorkingEntries((prev) =>
@@ -3576,14 +3672,6 @@ useEffect(() => {
         return { ...entry, sets: nextSets };
       })
     );
-  };
-
-  const adjustGymWeight = (delta: number) => {
-    const step =
-      currentGymEntry?.templateHint?.weightStep || getWeightSliderConfig(state.settings.units).step;
-    const current = Number(currentGymSet?.weight) || 0;
-    const next = Math.max(0, roundTo(current + delta, step));
-    updateGymSet({ weight: String(next) });
   };
 
   const handleSwapExercise = (nextEx: Omit<TemplateExercise, "id">) => {
@@ -3894,6 +3982,7 @@ const headerStats = useMemo(() => {
           email,
           role: state.settings.role === "coach" ? "coach" : "athlete",
           username: state.settings.profile.username || null,
+          avatar_url: state.settings.profile.avatarUrl || null,
           share_settings: {
             workouts: !!state.settings.profile.shareWorkouts,
             prs: !!state.settings.profile.sharePRs,
@@ -3914,6 +4003,7 @@ const headerStats = useMemo(() => {
     authUser,
     state.settings.role,
     state.settings.profile.username,
+    state.settings.profile.avatarUrl,
     state.settings.profile.shareWorkouts,
     state.settings.profile.sharePRs,
     state.settings.profile.shareWeighIns,
@@ -4512,70 +4602,70 @@ const headerStats = useMemo(() => {
                   </div>
                 ) : null}
                 {currentGymEntry?.templateHint?.timeUnit ? null : (
-                  <BigWeightSlider
-                    value={currentGymSet?.weight || ""}
-                    units={state.settings.units}
-                    onChange={(v) => updateGymSet({ weight: v })}
+                  <MetricStepper
+                    label="Weight"
+                    value={weightValue || 0}
+                    min={0}
+                    max={weightConfig.max}
+                    step={weightStep}
+                    unit={state.settings.units}
+                    onChange={(v) => updateGymSet({ weight: String(v) })}
+                    quickValues={weightQuickValues}
+                    quickAdjust={(state.settings.units === "lb"
+                      ? [
+                          { label: "+2.5", delta: 2.5 },
+                          { label: "+5", delta: 5 },
+                          { label: "+10", delta: 10 },
+                          { label: "+25", delta: 25 },
+                          { label: "-5", delta: -5 },
+                          { label: "-10", delta: -10 },
+                        ]
+                      : [
+                          { label: "+1", delta: 1 },
+                          { label: "+2.5", delta: 2.5 },
+                          { label: "+5", delta: 5 },
+                          { label: "+10", delta: 10 },
+                          { label: "-2.5", delta: -2.5 },
+                          { label: "-5", delta: -5 },
+                        ])}
                   />
                 )}
                 {currentGymEntry?.templateHint?.timeUnit ? null : (
-                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <span>Quick add</span>
-                    {(state.settings.units === "lb"
-                      ? [2.5, 5, 10, 25, 45]
-                      : [1, 2.5, 5, 10, 20]
-                    ).map((inc) => (
-                      <Button
-                        key={`plus-${inc}`}
-                        size="sm"
-                        variant="outline"
-                        className="rounded-lg h-6 px-2 text-[11px]"
-                        onClick={() => adjustGymWeight(inc)}
-                      >
-                        +{inc}
-                      </Button>
-                    ))}
-                    <span className="ml-1">Quick drop</span>
-                    {[5, 10].map((dec) => (
-                      <Button
-                        key={`minus-${dec}`}
-                        size="sm"
-                        variant="outline"
-                        className="rounded-lg h-6 px-2 text-[11px]"
-                        onClick={() => adjustGymWeight(-dec)}
-                      >
-                        -{dec}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-                {currentGymEntry?.templateHint?.timeUnit ? null : (
-                  <div className="grid grid-cols-2 gap-3">
-                    <BigMetricSlider
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <MetricStepper
                       label="Reps"
-                      value={currentGymSet?.reps || ""}
-                      onChange={(v) => updateGymSet({ reps: v })}
+                      value={Number(currentGymSet?.reps) || 0}
                       min={1}
                       max={30}
                       step={1}
-                      tickEvery={1}
-                      tickOffset={0}
+                      onChange={(v) => updateGymSet({ reps: String(v) })}
+                      quickValues={[6, 8, 10, 12, 15, 20]}
+                      quickAdjust={[
+                        { label: "+1", delta: 1 },
+                        { label: "+2", delta: 2 },
+                        { label: "+5", delta: 5 },
+                        { label: "-1", delta: -1 },
+                      ]}
+                      size="md"
                     />
-                    <BigMetricSlider
+                    <MetricStepper
                       label="RPE"
-                      value={currentGymSet?.rpe || ""}
-                      onChange={(v) => updateGymSet({ rpe: v })}
+                      value={Number(currentGymSet?.rpe) || 6}
                       min={6}
                       max={10}
                       step={0.5}
-                      tickEvery={0.5}
-                      tickOffset={0}
+                      onChange={(v) => updateGymSet({ rpe: String(v) })}
+                      quickValues={[6, 7, 8, 9, 10]}
+                      quickAdjust={[
+                        { label: "+0.5", delta: 0.5 },
+                        { label: "+1", delta: 1 },
+                        { label: "-0.5", delta: -0.5 },
+                      ]}
+                      helperText="10 = max, 8 = ~2 reps left"
+                      size="md"
                     />
                   </div>
                 )}
-                <div className="text-[11px] text-muted-foreground">
-                  RPE = effort scale. 10 = max, 8 = ~2 reps left.
-                </div>
                 {showGymNotes ? (
                   <div className="space-y-1">
                     <Label>Notes</Label>
@@ -4620,41 +4710,50 @@ const headerStats = useMemo(() => {
                     {showGymNotes ? "Hide notes" : "Add note"}
                   </Button>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Button
-                    variant="outline"
-                    className="rounded-2xl h-9 px-4 text-sm"
-                    onClick={() => setGymStepIndex((i) => Math.max(0, i - 1))}
-                  >
-                    Prev
-                  </Button>
-                  <Button
-                    className="rounded-2xl flex-1 h-10 text-sm"
-                    onClick={() => {
-                      const restFromTemplate = currentGymEntry?.templateHint?.restSec ?? 0;
-                      const nextRest = restPresetSec || restFromTemplate || 0;
-                      triggerHaptic(40);
-                      setRestSeconds(nextRest);
-                      setRestTargetSec(nextRest);
-                      setRestRunning(nextRest > 0);
-                      setAutoAdvanceAfterRest(true);
-                      if (nextRest > 0) {
-                        setTotalRestSec((v) => v + nextRest);
-                        setRestCount((v) => v + 1);
-                      }
-                      if (nextRest <= 0) {
-                        advanceGymStep();
-                      }
-                    }}
-                  >
-                    Complete set
-                  </Button>
-                  <Button variant="outline" className="rounded-2xl h-9 px-4 text-sm" onClick={addGymSet}>
-                    Add set
-                  </Button>
-                </div>
               </div>
             )}
+          </div>
+
+          <div className="sticky bottom-2">
+            <div className="rounded-2xl border border-foreground/15 bg-background/80 p-2 shadow-[0_10px_24px_rgba(0,0,0,0.2)] backdrop-blur">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  className="rounded-2xl h-9 px-4 text-sm"
+                  onClick={() => setGymStepIndex((i) => Math.max(0, i - 1))}
+                >
+                  Prev
+                </Button>
+                <Button
+                  className="rounded-2xl flex-1 h-10 text-sm"
+                  onClick={() => {
+                    const restFromTemplate = currentGymEntry?.templateHint?.restSec ?? 0;
+                    const nextRest = restPresetSec || restFromTemplate || 0;
+                    triggerHaptic(40);
+                    setRestSeconds(nextRest);
+                    setRestTargetSec(nextRest);
+                    setRestRunning(nextRest > 0);
+                    setAutoAdvanceAfterRest(true);
+                    if (nextRest > 0) {
+                      setTotalRestSec((v) => v + nextRest);
+                      setRestCount((v) => v + 1);
+                    }
+                    if (nextRest <= 0) {
+                      advanceGymStep();
+                    }
+                  }}
+                >
+                  Complete set
+                </Button>
+                <Button
+                  variant="outline"
+                  className="rounded-2xl h-9 px-4 text-sm"
+                  onClick={addGymSet}
+                >
+                  Add set
+                </Button>
+              </div>
+            </div>
           </div>
 
           <div className="h-1" />
@@ -4766,6 +4865,8 @@ const headerStats = useMemo(() => {
           setState={setState}
           selectedTemplateId={selectedTemplateId}
           onSelectTemplate={setSelectedTemplateId}
+          splitWizard={splitWizard}
+          onCloseSplitWizard={() => setSplitWizard(null)}
         />
 
         <ProgramGeneratorDialog
@@ -5342,39 +5443,79 @@ const headerStats = useMemo(() => {
                   </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_auto] gap-3">
-                    <div className="space-y-1">
-                      <Label>Workout</Label>
-                      <Select
-                        value={scheduleInfo.isRestDay ? "rest" : dashboardTemplate?.id || ""}
-                        onValueChange={(v) => {
-                          const dayKey = getWeekdayKey(sessionDate);
-                          setState((prev) => ({
-                            ...prev,
-                            settings: {
-                              ...prev.settings,
-                              schedule: {
-                                ...(prev.settings.schedule || emptySchedule),
-                                [dayKey]: v,
-                              },
-                            },
-                          }));
-                          if (v !== "rest") {
-                            setSelectedTemplateId(v);
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="w-full min-w-0">
-                          <SelectValue placeholder="Choose a workout" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="rest">Active Rest Day</SelectItem>
-                          {state.templates.map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
+                    <div className="space-y-2">
+                      <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                        Active split
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {activeSplitLabel ? (
+                          <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em]">
+                            {activeSplitLabel}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">
+                            No split selected yet
+                          </span>
+                        )}
+                      </div>
+                      <div className="rounded-2xl border border-foreground/10 bg-background/70 p-3">
+                        <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                          Today&apos;s workout
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant={scheduleInfo.isRestDay ? "secondary" : "outline"}
+                            className="rounded-full"
+                            onClick={() => {
+                              const dayKey = getWeekdayKey(sessionDate);
+                              setState((prev) => ({
+                                ...prev,
+                                settings: {
+                                  ...prev.settings,
+                                  schedule: {
+                                    ...(prev.settings.schedule || emptySchedule),
+                                    [dayKey]: "rest",
+                                  },
+                                },
+                              }));
+                              setSelectedTemplateId("");
+                            }}
+                          >
+                            Active rest day
+                          </Button>
+                          {todaysSplitTemplates.map((t) => (
+                            <Button
+                              key={t.id}
+                              size="sm"
+                              variant={t.id === dashboardTemplate?.id ? "default" : "outline"}
+                              className="rounded-full"
+                              onClick={() => {
+                                const dayKey = getWeekdayKey(sessionDate);
+                                setState((prev) => ({
+                                  ...prev,
+                                  settings: {
+                                    ...prev.settings,
+                                    schedule: {
+                                      ...(prev.settings.schedule || emptySchedule),
+                                      [dayKey]: t.id,
+                                    },
+                                    activeSplitKey: t.splitKey || prev.settings.activeSplitKey,
+                                  },
+                                }));
+                                setSelectedTemplateId(t.id);
+                              }}
+                            >
                               {t.name}
-                            </SelectItem>
+                            </Button>
                           ))}
-                        </SelectContent>
-                      </Select>
+                          {!todaysSplitTemplates.length ? (
+                            <span className="text-xs text-muted-foreground">
+                              No workouts for this split yet.
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
                     <div className="flex items-end">
                       <div className="flex flex-wrap gap-2">
@@ -5496,16 +5637,21 @@ const headerStats = useMemo(() => {
                     </div>
                   ) : (
                     <>
-                      <BigMetricSlider
+                      <MetricStepper
                         label="Weight"
                         value={weighInSliderValue}
-                        onChange={(v) => setWeighInInput(v)}
                         min={weighInRange.min}
                         max={weighInRange.max}
                         step={weighInRange.step}
-                        suffix={state.settings.units}
-                        tickEvery={weighInRange.tickEvery}
-                        tickOffset={0}
+                        unit={state.settings.units}
+                        onChange={(v) => setWeighInInput(String(v))}
+                        quickValues={weighInQuickValues}
+                        quickAdjust={[
+                          { label: "+0.5", delta: 0.5 },
+                          { label: "+1", delta: 1 },
+                          { label: "+2", delta: 2 },
+                          { label: "-0.5", delta: -0.5 },
+                        ]}
                       />
                       <div className="flex flex-wrap items-center gap-2">
                         <Button className="rounded-xl flex-1" onClick={saveWeighIn}>
@@ -6091,7 +6237,57 @@ const headerStats = useMemo(() => {
                       <DialogTitle>Workout invites</DialogTitle>
                       <DialogDescription>Join a friend’s live workout.</DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-2">
+                    <div className="space-y-3">
+                      <div className="rounded-xl border p-3 space-y-2">
+                        <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                          Invite a friend
+                        </div>
+                        <div className="space-y-2">
+                          <Select value={inviteFriendId} onValueChange={setInviteFriendId}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Choose friend" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {friends.length ? (
+                                friends.map((f) => (
+                                  <SelectItem key={f.userId} value={f.userId}>
+                                    @{f.username}
+                                  </SelectItem>
+                                ))
+                              ) : (
+                                <SelectItem value="none" disabled>
+                                  No friends yet
+                                </SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                          <Select value={inviteTemplateId} onValueChange={setInviteTemplateId}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Pick a workout" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {state.templates.length ? (
+                                state.templates.map((t) => (
+                                  <SelectItem key={t.id} value={t.id}>
+                                    {t.name}
+                                  </SelectItem>
+                                ))
+                              ) : (
+                                <SelectItem value="none" disabled>
+                                  No templates yet
+                                </SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            className="w-full rounded-xl"
+                            onClick={sendWorkoutInvite}
+                            disabled={!inviteFriendId || !inviteTemplateId}
+                          >
+                            Send invite
+                          </Button>
+                        </div>
+                      </div>
                       {workoutInvites.length ? (
                         <div className="space-y-2">
                           {workoutInvites.map((invite) => (
@@ -6317,12 +6513,20 @@ const headerStats = useMemo(() => {
                     <CardContent className="p-6">
                       <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
                         <div className="flex items-center gap-4">
-                          <div className="relative h-20 w-20 rounded-3xl bg-black/90 text-white flex items-center justify-center text-3xl font-display uppercase tracking-[0.2em] shadow-[0_20px_40px_rgba(0,0,0,0.35)]">
-                            {(state.settings.profile.name || state.settings.profile.username || "FF")
-                              .split(" ")
-                              .map((s) => s.slice(0, 1))
-                              .join("")
-                              .slice(0, 2)}
+                          <div className="relative h-20 w-20 rounded-3xl bg-black/90 text-white flex items-center justify-center text-3xl font-display uppercase tracking-[0.2em] shadow-[0_20px_40px_rgba(0,0,0,0.35)] overflow-hidden">
+                            {state.settings.profile.avatarUrl ? (
+                              <img
+                                src={state.settings.profile.avatarUrl}
+                                alt="Profile"
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              (state.settings.profile.name || state.settings.profile.username || "FF")
+                                .split(" ")
+                                .map((s) => s.slice(0, 1))
+                                .join("")
+                                .slice(0, 2)
+                            )}
                           </div>
                           <div>
                             <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
@@ -6337,6 +6541,15 @@ const headerStats = useMemo(() => {
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
+                          <label className="rounded-2xl border border-foreground/10 bg-background/70 px-4 py-2 text-sm cursor-pointer">
+                            Change photo
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleAvatarChange(e.target.files?.[0])}
+                            />
+                          </label>
                           <Button className="rounded-2xl" onClick={() => setSettingsDialogOpen(true)}>
                             Edit profile
                           </Button>
@@ -6481,9 +6694,22 @@ const headerStats = useMemo(() => {
                               : WEEKDAYS.filter((d) => d.index !== 0).map((d) => d.key);
                             const source =
                               templates?.[0]?.source === "custom_split" ? "custom_split" : "generated";
+                            const isActiveSplit = key === state.settings.activeSplitKey;
                             return (
-                              <div key={key} className="rounded-xl border p-3 text-sm">
-                                <div className="font-medium">{formatSplitLabel(key)}</div>
+                              <div
+                                key={key}
+                                className={`rounded-xl border p-3 text-sm ${
+                                  isActiveSplit ? "border-primary/60 bg-primary/10" : ""
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="font-medium">{formatSplitLabel(key)}</div>
+                                  {isActiveSplit ? (
+                                    <Badge variant="secondary" className="rounded-full">
+                                      Active
+                                    </Badge>
+                                  ) : null}
+                                </div>
                                 <div className="text-xs text-muted-foreground mt-1">
                                   {templates.length} templates saved
                                 </div>
@@ -6634,7 +6860,7 @@ const headerStats = useMemo(() => {
                         placeholder="Split name (e.g., Lift & Sculpt)"
                       />
                       <div className="flex flex-wrap gap-2">
-                        {WEEKDAYS.filter((d) => d.index !== 0).map((day) => (
+                        {WEEKDAYS.map((day) => (
                           <Button
                             key={day.key}
                             type="button"
@@ -6666,6 +6892,10 @@ const headerStats = useMemo(() => {
                             } as Template;
                           });
                           replaceProgramTemplates(templates, customSplitDays, splitKey, "custom_split");
+                          setSplitWizard({
+                            title: name,
+                            templateIds: templates.map((t) => t.id),
+                          });
                         }}
                       >
                         Create custom split
@@ -7434,6 +7664,137 @@ function BigMetricSlider({
         />
         <div className="absolute inset-y-0 left-1/2 w-[2px] bg-foreground/80 pointer-events-none" />
       </div>
+    </div>
+  );
+}
+
+function MetricStepper({
+  label,
+  value,
+  min,
+  max,
+  step,
+  unit,
+  displayValue,
+  onChange,
+  quickAdjust = [],
+  quickValues = [],
+  helperText,
+  size = "lg",
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+  displayValue?: string;
+  onChange: (next: number) => void;
+  quickAdjust?: Array<{ label: string; delta: number }>;
+  quickValues?: number[];
+  helperText?: string;
+  size?: "lg" | "md";
+}) {
+  const clamped = clamp(roundTo(value || min, step), min, max);
+  const formatValue = (n: number) =>
+    Number.isInteger(n) ? String(n) : n.toFixed(1);
+  const display = displayValue || formatValue(clamped);
+  const applyValue = (next: number) => {
+    const snapped = clamp(roundTo(next, step), min, max);
+    onChange(snapped);
+  };
+  const uniqueQuick = Array.from(new Set(quickValues)).filter(
+    (v) => v >= min && v <= max
+  );
+
+  return (
+    <div className="rounded-[28px] border border-foreground/10 bg-card/80 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground">
+          {label}
+        </div>
+        {unit ? (
+          <div className="rounded-full border border-foreground/10 bg-background/70 px-2 py-1 text-[10px] uppercase tracking-[0.3em]">
+            {unit}
+          </div>
+        ) : null}
+      </div>
+      <div
+        className={`mt-3 flex items-center justify-between gap-3 ${
+          size === "lg" ? "min-h-[80px]" : "min-h-[64px]"
+        }`}
+      >
+        <button
+          type="button"
+          className={`flex h-14 w-14 items-center justify-center rounded-2xl border border-foreground/10 bg-background/70 text-2xl font-display ${
+            size === "lg" ? "" : "h-12 w-12"
+          }`}
+          onClick={() => applyValue(clamped - step)}
+        >
+          –
+        </button>
+        <div className="flex-1 text-center">
+          <div
+            className={`font-display text-foreground ${
+              size === "lg" ? "text-4xl" : "text-3xl"
+            }`}
+          >
+            {display}
+          </div>
+          {helperText ? (
+            <div className="mt-1 text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+              {helperText}
+            </div>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className={`flex h-14 w-14 items-center justify-center rounded-2xl border border-foreground/10 bg-background/70 text-2xl font-display ${
+            size === "lg" ? "" : "h-12 w-12"
+          }`}
+          onClick={() => applyValue(clamped + step)}
+        >
+          +
+        </button>
+      </div>
+
+      {uniqueQuick.length ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+            Quick set
+          </div>
+          {uniqueQuick.map((preset) => (
+            <Button
+              key={`preset-${preset}`}
+              size="sm"
+              variant="outline"
+              className="rounded-full px-3 text-[11px]"
+              onClick={() => applyValue(preset)}
+            >
+              {formatValue(preset)}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+
+      {quickAdjust.length ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+            Quick adjust
+          </div>
+          {quickAdjust.map((adj) => (
+            <Button
+              key={adj.label}
+              size="sm"
+              variant="secondary"
+              className="rounded-full px-3 text-[11px]"
+              onClick={() => applyValue(clamped + adj.delta)}
+            >
+              {adj.label}
+            </Button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -8775,8 +9136,6 @@ function OnboardingScreen({
   };
   const ageValue = clamp(Number(profile.age) || 25, 10, 80);
   const heightValue = parseHeight(profile.height);
-  const heightFeet = Math.floor(heightValue / 12) || 5;
-  const heightRemainder = heightValue ? Math.round(heightValue % 12) : 0;
   const heightSliderValue =
     settings.units === "kg"
       ? clamp(heightValue || 175, 140, 210)
@@ -9061,57 +9420,60 @@ function OnboardingScreen({
                   </div>
                   <div className="space-y-1">
                     <Label>{heightLabel}</Label>
-                    <div className="mt-2 space-y-1">
-                      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                        <span>{settings.units === "kg" ? "140" : "4'6"}</span>
-                        <span>
-                          {settings.units === "kg"
-                          ? `${heightSliderValue} cm`
-                          : `${heightFeet} ft ${heightRemainder} in`}
-                        </span>
-                        <span>{settings.units === "kg" ? "210" : "6'10"}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={settings.units === "kg" ? 140 : 54}
-                        max={settings.units === "kg" ? 210 : 82}
-                        step={1}
-                        value={heightSliderValue}
-                        onChange={(e) =>
-                          setProfile((p) => ({
-                            ...p,
-                            height: e.target.value,
-                          }))
-                        }
-                        className="w-full accent-primary"
-                      />
-                    </div>
+                    <MetricStepper
+                      label="Height"
+                      value={heightSliderValue}
+                      min={settings.units === "kg" ? 140 : 54}
+                      max={settings.units === "kg" ? 210 : 82}
+                      step={1}
+                      displayValue={formatHeightValue(heightSliderValue, settings.units)}
+                      onChange={(v) =>
+                        setProfile((p) => ({
+                          ...p,
+                          height: String(v),
+                        }))
+                      }
+                      quickValues={
+                        settings.units === "kg"
+                          ? [160, 170, 175, 180, 190]
+                          : [62, 66, 68, 70, 74]
+                      }
+                      quickAdjust={[
+                        { label: "+1", delta: 1 },
+                        { label: "+2", delta: 2 },
+                        { label: "-1", delta: -1 },
+                      ]}
+                      size="md"
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label>{weightLabel}</Label>
-                    <div className="mt-2 space-y-1">
-                      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                        <span>{settings.units === "kg" ? "40" : "80"}</span>
-                        <span>
-                          {weightSliderValue} {settings.units}
-                        </span>
-                        <span>{settings.units === "kg" ? "200" : "400"}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={settings.units === "kg" ? 40 : 80}
-                        max={settings.units === "kg" ? 200 : 400}
-                        step={1}
-                        value={weightSliderValue}
-                        onChange={(e) =>
-                          setProfile((p) => ({
-                            ...p,
-                            weight: e.target.value,
-                          }))
-                        }
-                        className="w-full accent-primary"
-                      />
-                    </div>
+                    <MetricStepper
+                      label="Weight"
+                      value={weightSliderValue}
+                      min={settings.units === "kg" ? 40 : 80}
+                      max={settings.units === "kg" ? 200 : 400}
+                      step={1}
+                      unit={settings.units}
+                      onChange={(v) =>
+                        setProfile((p) => ({
+                          ...p,
+                          weight: String(v),
+                        }))
+                      }
+                      quickValues={
+                        settings.units === "kg"
+                          ? [60, 70, 80, 90, 100]
+                          : [120, 150, 180, 200, 225]
+                      }
+                      quickAdjust={[
+                        { label: "+1", delta: 1 },
+                        { label: "+2.5", delta: 2.5 },
+                        { label: "+5", delta: 5 },
+                        { label: "-2.5", delta: -2.5 },
+                      ]}
+                      size="md"
+                    />
                   </div>
                   <div className="space-y-2 md:col-span-2">
                     <div className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/10 bg-background/60 px-3 py-2">
@@ -9358,8 +9720,6 @@ function SettingsPanel({
   };
   const ageValue = clamp(Number(settings.profile.age) || 25, 10, 80);
   const heightValue = parseHeight(settings.profile.height);
-  const heightFeet = Math.floor(heightValue / 12) || 5;
-  const heightRemainder = heightValue ? Math.round(heightValue % 12) : 0;
   const heightSliderValue =
     settings.units === "kg"
       ? clamp(heightValue || 175, 140, 210)
@@ -9468,47 +9828,50 @@ function SettingsPanel({
             </div>
             <div className="space-y-1">
               <Label>{heightLabel}</Label>
-              <div className="mt-2 space-y-1">
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                  <span>{settings.units === "kg" ? "140" : "4'6"}</span>
-                  <span>
-                    {settings.units === "kg"
-                      ? `${heightSliderValue} cm`
-                      : `${heightFeet} ft ${heightRemainder} in`}
-                  </span>
-                  <span>{settings.units === "kg" ? "210" : "6'10"}</span>
-                </div>
-                <input
-                  type="range"
-                  min={settings.units === "kg" ? 140 : 54}
-                  max={settings.units === "kg" ? 210 : 82}
-                  step={1}
-                  value={heightSliderValue}
-                  onChange={(e) => updateProfile({ height: e.target.value })}
-                  className="w-full accent-primary"
-                />
-              </div>
+              <MetricStepper
+                label="Height"
+                value={heightSliderValue}
+                min={settings.units === "kg" ? 140 : 54}
+                max={settings.units === "kg" ? 210 : 82}
+                step={1}
+                displayValue={formatHeightValue(heightSliderValue, settings.units)}
+                onChange={(v) => updateProfile({ height: String(v) })}
+                quickValues={
+                  settings.units === "kg"
+                    ? [160, 170, 175, 180, 190]
+                    : [62, 66, 68, 70, 74]
+                }
+                quickAdjust={[
+                  { label: "+1", delta: 1 },
+                  { label: "+2", delta: 2 },
+                  { label: "-1", delta: -1 },
+                ]}
+                size="md"
+              />
             </div>
             <div className="space-y-1">
               <Label>{weightLabel}</Label>
-              <div className="mt-2 space-y-1">
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                  <span>{settings.units === "kg" ? "40" : "80"}</span>
-                  <span>
-                    {weightSliderValue} {settings.units}
-                  </span>
-                  <span>{settings.units === "kg" ? "200" : "400"}</span>
-                </div>
-                <input
-                  type="range"
-                  min={settings.units === "kg" ? 40 : 80}
-                  max={settings.units === "kg" ? 200 : 400}
-                  step={1}
-                  value={weightSliderValue}
-                  onChange={(e) => updateProfile({ weight: e.target.value })}
-                  className="w-full accent-primary"
-                />
-              </div>
+              <MetricStepper
+                label="Weight"
+                value={weightSliderValue}
+                min={settings.units === "kg" ? 40 : 80}
+                max={settings.units === "kg" ? 200 : 400}
+                step={1}
+                unit={settings.units}
+                onChange={(v) => updateProfile({ weight: String(v) })}
+                quickValues={
+                  settings.units === "kg"
+                    ? [60, 70, 80, 90, 100]
+                    : [120, 150, 180, 200, 225]
+                }
+                quickAdjust={[
+                  { label: "+1", delta: 1 },
+                  { label: "+2.5", delta: 2.5 },
+                  { label: "+5", delta: 5 },
+                  { label: "-2.5", delta: -2.5 },
+                ]}
+                size="md"
+              />
             </div>
           </div>
         </div>
@@ -10212,6 +10575,8 @@ function TemplateManagerDialog({
   setState,
   selectedTemplateId,
   onSelectTemplate,
+  splitWizard,
+  onCloseSplitWizard,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -10219,6 +10584,8 @@ function TemplateManagerDialog({
   setState: React.Dispatch<React.SetStateAction<AppState>>;
   selectedTemplateId: string;
   onSelectTemplate: (id: string) => void;
+  splitWizard: null | { title: string; templateIds: string[] };
+  onCloseSplitWizard: () => void;
 }) {
   const [selectedId, setSelectedId] = useState(selectedTemplateId);
   const [exporting, setExporting] = useState<Template | null>(null);
@@ -10269,9 +10636,36 @@ function TemplateManagerDialog({
 
   useEffect(() => setSelectedId(selectedTemplateId), [selectedTemplateId, open]);
 
+  const visibleTemplates = useMemo(() => {
+    if (!splitWizard) return state.templates;
+    const ids = new Set(splitWizard.templateIds);
+    return state.templates.filter((t) => ids.has(t.id));
+  }, [state.templates, splitWizard]);
+
+  useEffect(() => {
+    if (!open || !splitWizard) return;
+    const firstId = splitWizard.templateIds[0];
+    if (firstId && !splitWizard.templateIds.includes(selectedId)) {
+      setSelectedId(firstId);
+      onSelectTemplate(firstId);
+    }
+  }, [open, splitWizard, selectedId, onSelectTemplate]);
+
   const selected = useMemo(() => {
-    return state.templates.find((t) => t.id === selectedId) || state.templates[0] || null;
-  }, [state.templates, selectedId]);
+    return visibleTemplates.find((t) => t.id === selectedId) || visibleTemplates[0] || null;
+  }, [visibleTemplates, selectedId]);
+
+  const wizardIndex = splitWizard
+    ? splitWizard.templateIds.indexOf(selectedId)
+    : -1;
+  const wizardTotal = splitWizard?.templateIds.length || 0;
+  const goWizard = (dir: number) => {
+    if (!splitWizard) return;
+    const nextId = splitWizard.templateIds[wizardIndex + dir];
+    if (!nextId) return;
+    setSelectedId(nextId);
+    onSelectTemplate(nextId);
+  };
 
   const updateSelected = (next: Template) => {
     setState((prev) => ({
@@ -10433,9 +10827,62 @@ function TemplateManagerDialog({
   const isCoach = role === "coach";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v && splitWizard) onCloseSplitWizard();
+        onOpenChange(v);
+      }}
+    >
       <DialogContent className="w-[calc(100vw-2rem)] max-w-5xl max-h-[85vh] overflow-y-auto overflow-x-hidden rounded-2xl">
         <DialogHeader>
+          {splitWizard ? (
+            <div className="rounded-2xl border bg-background/70 p-3">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                    Custom split builder
+                  </div>
+                  <div className="text-lg font-display">
+                    {splitWizard.title} • Day {wizardIndex + 1}/{wizardTotal}
+                  </div>
+                  {selected ? (
+                    <div className="text-xs text-muted-foreground mt-1">{selected.name}</div>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => goWizard(-1)}
+                    disabled={wizardIndex <= 0}
+                  >
+                    Previous day
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => goWizard(1)}
+                    disabled={wizardIndex < 0 || wizardIndex >= wizardTotal - 1}
+                  >
+                    Next day
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="rounded-xl"
+                    onClick={() => {
+                      onCloseSplitWizard();
+                      onOpenChange(false);
+                    }}
+                  >
+                    Done
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <DialogTitle>Workout templates</DialogTitle>
@@ -10496,17 +10943,23 @@ function TemplateManagerDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="font-medium">Templates</div>
-              <Button size="sm" variant="outline" className="rounded-xl" onClick={addTemplate}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-xl"
+                onClick={addTemplate}
+                disabled={!!splitWizard}
+              >
                 <Plus className="h-4 w-4 mr-2" /> Add
               </Button>
             </div>
-            {state.templates.length === 0 ? (
+            {visibleTemplates.length === 0 ? (
               <div className="rounded-xl border p-3 text-sm text-muted-foreground">
                 No templates yet. Add one to get started.
               </div>
             ) : (
               <div className="space-y-2">
-                {state.templates.map((t) => (
+                {visibleTemplates.map((t) => (
                   <button
                     key={t.id}
                     onClick={() => {

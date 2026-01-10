@@ -5470,57 +5470,6 @@ const headerStats = useMemo(() => {
                 </motion.div>
 
                 <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <CalendarDays className="h-5 w-5" /> Weekly overview
-                      </CardTitle>
-                      <CardDescription>All assigned workouts and rest days.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <motion.div variants={listMotion} className="space-y-2">
-                        {WEEKDAYS.map((day) => (
-                          <motion.div
-                            key={day.key}
-                            variants={listItemMotion}
-                            className="rounded-xl border p-3"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                                  {day.label}
-                                </div>
-                                <div className="text-lg font-display">
-                                  {scheduledDayLabel(day.key)}
-                                </div>
-                              </div>
-                              <div className="flex flex-col items-end gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="rounded-lg h-7 px-2 text-[11px]"
-                                  onClick={() => toggleRestDay(day.key)}
-                                >
-                                  {state.settings.schedule?.[day.key] === "rest" ? "Unset rest" : "Set rest"}
-                                </Button>
-                              </div>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </motion.div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button className="rounded-xl" onClick={() => setScheduleDialogOpen(true)}>
-                          Edit schedule
-                        </Button>
-                        <Button variant="outline" className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
-                          Manage templates
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-glass">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
@@ -5607,6 +5556,57 @@ const headerStats = useMemo(() => {
                     )}
                   </motion.div>
                 </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <CalendarDays className="h-5 w-5" /> Weekly overview
+                      </CardTitle>
+                      <CardDescription>All assigned workouts and rest days.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <motion.div variants={listMotion} className="space-y-2">
+                        {WEEKDAYS.map((day) => (
+                          <motion.div
+                            key={day.key}
+                            variants={listItemMotion}
+                            className="rounded-xl border p-3"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                                  {day.label}
+                                </div>
+                                <div className="text-lg font-display">
+                                  {scheduledDayLabel(day.key)}
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-lg h-7 px-2 text-[11px]"
+                                  onClick={() => toggleRestDay(day.key)}
+                                >
+                                  {state.settings.schedule?.[day.key] === "rest" ? "Unset rest" : "Set rest"}
+                                </Button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button className="rounded-xl" onClick={() => setScheduleDialogOpen(true)}>
+                          Edit schedule
+                        </Button>
+                        <Button variant="outline" className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
+                          Manage templates
+                        </Button>
+                      </div>
+                    </CardContent>
                   </Card>
                 </motion.div>
               </motion.div>

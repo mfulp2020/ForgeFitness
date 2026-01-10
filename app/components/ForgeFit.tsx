@@ -8379,13 +8379,13 @@ function GetStartedScreen({ onStart }: { onStart: () => void }) {
             <div className="absolute inset-0 bg-black/30" />
           </div>
           <div className="relative z-10 w-full max-w-xl space-y-5 px-4 py-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-foreground/20 px-4 py-2 text-xs uppercase tracking-[0.3em] text-muted-foreground">
+            <div className="inline-flex items-center gap-2 rounded-full border border-black/40 bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-black shadow-sm">
               Forge Fitness • Iron Edition
             </div>
-            <div className="text-4xl md:text-5xl font-display uppercase tracking-[0.22em] text-black drop-shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
+            <div className="text-4xl md:text-5xl font-display uppercase tracking-[0.22em] text-black drop-shadow-[0_6px_18px_rgba(0,0,0,0.45)]">
               Built in the forge. Earned in the gym.
             </div>
-            <div className="text-sm text-foreground/80 leading-relaxed">
+            <div className="text-sm font-semibold text-foreground/90 leading-relaxed">
               Forge Fitness is where strength gets built. Lock in your sessions, track every set,
               and shape a physique that lasts.
             </div>
@@ -8404,7 +8404,7 @@ function GetStartedScreen({ onStart }: { onStart: () => void }) {
               </div>
             </div>
             <Button
-              className="w-full rounded-2xl font-display uppercase tracking-[0.3em]"
+              className="w-full rounded-2xl font-display uppercase tracking-[0.3em] text-lg py-6"
               onClick={onStart}
             >
               Get Started

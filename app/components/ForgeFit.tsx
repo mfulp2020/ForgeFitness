@@ -1984,17 +1984,16 @@ useEffect(() => {
     document.documentElement.setAttribute("data-theme", state.settings.theme || "neon");
   }, [state.settings.theme]);
 
+  const [activeTab, setActiveTab] = useState<
+    "dashboard" | "workouts" | "social" | "profile" | "more"
+  >("dashboard");
+  const simpleMode = !!state.settings.simpleMode;
   useEffect(() => {
     if (!simpleMode) return;
     if (activeTab === "social" || activeTab === "profile") {
       setActiveTab("dashboard");
     }
   }, [simpleMode, activeTab]);
-
-  const [activeTab, setActiveTab] = useState<
-    "dashboard" | "workouts" | "social" | "profile" | "more"
-  >("dashboard");
-  const simpleMode = !!state.settings.simpleMode;
   const [selectedTemplateId, setSelectedTemplateId] = useState(
     state.templates?.[0]?.id || ""
   );

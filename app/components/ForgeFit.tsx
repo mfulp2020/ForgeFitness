@@ -2006,6 +2006,7 @@ useEffect(() => {
   const [confirmDeleteAccountOpen, setConfirmDeleteAccountOpen] = useState(false);
   const [deleteAccountLoading, setDeleteAccountLoading] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [recapOpen, setRecapOpen] = useState(false);
   const [recapData, setRecapData] = useState<{
     templateName: string;
@@ -5121,6 +5122,57 @@ const headerStats = useMemo(() => {
           </DialogContent>
         </Dialog>
 
+        <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit schedule</DialogTitle>
+              <DialogDescription>Assign workouts to each day of the week.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {WEEKDAYS.map((day) => (
+                  <div key={day.key} className="flex items-center gap-2">
+                    <div className="w-20 text-xs text-muted-foreground">{day.label}</div>
+                    <Select
+                      value={state.settings.schedule?.[day.key] || "off"}
+                      onValueChange={(v) =>
+                        setState((prev) => ({
+                          ...prev,
+                          settings: {
+                            ...prev.settings,
+                            schedule: {
+                              ...(prev.settings.schedule || emptySchedule),
+                              [day.key]: v === "off" ? "" : v,
+                            },
+                          },
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-full min-w-0">
+                        <SelectValue placeholder="Unassigned" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="off">Unassigned</SelectItem>
+                        <SelectItem value="rest">Rest Day</SelectItem>
+                        {state.templates.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <Button variant="outline" className="rounded-xl" onClick={() => setScheduleDialogOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* -------------------- Pages -------------------- */}
         <div className="pb-28">
           {!isOnline ? (
@@ -5325,13 +5377,35 @@ const headerStats = useMemo(() => {
                       </Select>
                     </div>
                     <div className="flex items-end">
-                      <Button
-                        className="rounded-2xl h-11 px-6"
-                        onClick={startWorkout}
-                        disabled={!dashboardTemplate}
-                      >
-                        <Play className="h-4 w-4 mr-2" /> Start workout
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          className="rounded-2xl h-11 px-4"
+                          onClick={() => {
+                            const dayKey = getWeekdayKey(sessionDate);
+                            setState((prev) => ({
+                              ...prev,
+                              settings: {
+                                ...prev.settings,
+                                schedule: {
+                                  ...(prev.settings.schedule || emptySchedule),
+                                  [dayKey]: "rest",
+                                },
+                              },
+                            }));
+                            setSelectedTemplateId("");
+                          }}
+                        >
+                          Skip today
+                        </Button>
+                        <Button
+                          className="rounded-2xl h-11 px-6"
+                          onClick={startWorkout}
+                          disabled={!dashboardTemplate}
+                        >
+                          <Play className="h-4 w-4 mr-2" /> Start workout
+                        </Button>
+                      </div>
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -5663,7 +5737,7 @@ const headerStats = useMemo(() => {
                       ))}
                     </motion.div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button className="rounded-xl" onClick={() => setSettingsDialogOpen(true)}>
+                      <Button className="rounded-xl" onClick={() => setScheduleDialogOpen(true)}>
                         Edit schedule
                       </Button>
                       <Button variant="outline" className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>

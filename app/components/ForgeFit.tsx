@@ -4371,6 +4371,145 @@ const headerStats = useMemo(() => {
         </div>
 
         <div className="relative z-10 mx-auto flex h-full max-w-md flex-col px-3 py-3">
+          {(restRunning || restPickerOpen) ? (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/95 backdrop-blur">
+              <div className="w-full max-w-sm rounded-3xl border border-foreground/15 bg-card/90 p-5 shadow-[0_18px_40px_rgba(0,0,0,0.3)]">
+                {restRunning ? (
+                  <>
+                    <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+                      Rest timer
+                    </div>
+                    <div className="mt-3 text-center text-5xl font-display">
+                      {String(Math.floor(restSeconds / 60)).padStart(2, "0")}:
+                      {String(restSeconds % 60).padStart(2, "0")}
+                    </div>
+                    <div className="mt-3 h-2 rounded-full bg-muted/60">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{
+                          width: `${restTargetSec ? Math.max(0, Math.min(100, ((restTargetSec - restSeconds) / restTargetSec) * 100)) : 0}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={() => {
+                          const delta = Math.min(15, restSeconds);
+                          const next = Math.max(0, restSeconds - delta);
+                          setRestSeconds(next);
+                          setRestTargetSec(Math.max(restTargetSec - delta, 0));
+                          setTotalRestSec((v) => Math.max(0, v - delta));
+                        }}
+                      >
+                        -15s
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="rounded-xl"
+                        onClick={() => setRestRunning((v) => !v)}
+                      >
+                        {restRunning ? "Pause" : "Start"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={() => {
+                          setRestSeconds(restSeconds + 15);
+                          setRestTargetSec(restTargetSec + 15);
+                          setTotalRestSec((v) => v + 15);
+                        }}
+                      >
+                        +15s
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={() => {
+                          setRestRunning(false);
+                          setTotalRestSec((v) => Math.max(0, v - restSeconds));
+                          setRestSeconds(0);
+                          setRestTargetSec(0);
+                          setAutoAdvanceAfterRest(false);
+                          setRestPickerOpen(false);
+                        }}
+                      >
+                        Skip rest
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground text-center">
+                      Select rest time
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      {[30, 60, 90, 120].map((sec) => (
+                        <Button
+                          key={sec}
+                          size="lg"
+                          className="rounded-2xl"
+                          variant="outline"
+                          onClick={() => {
+                            setRestPickerOpen(false);
+                            setRestSeconds(sec);
+                            setRestTargetSec(sec);
+                            setRestRunning(sec > 0);
+                            setAutoAdvanceAfterRest(true);
+                            if (sec > 0) {
+                              setTotalRestSec((v) => v + sec);
+                              setRestCount((v) => v + 1);
+                            } else {
+                              advanceGymStep();
+                            }
+                          }}
+                        >
+                          {formatMMSS(sec)}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="mt-4 flex flex-col gap-2">
+                      <Button
+                        variant="secondary"
+                        className="rounded-2xl"
+                        onClick={() => {
+                          const sec = currentGymEntry?.templateHint?.restSec ?? 90;
+                          setRestPickerOpen(false);
+                          setRestSeconds(sec);
+                          setRestTargetSec(sec);
+                          setRestRunning(sec > 0);
+                          setAutoAdvanceAfterRest(true);
+                          if (sec > 0) {
+                            setTotalRestSec((v) => v + sec);
+                            setRestCount((v) => v + 1);
+                          } else {
+                            advanceGymStep();
+                          }
+                        }}
+                      >
+                        Use target rest
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="rounded-2xl"
+                        onClick={() => {
+                          setRestPickerOpen(false);
+                          advanceGymStep();
+                        }}
+                      >
+                        No rest
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
@@ -4524,76 +4663,8 @@ const headerStats = useMemo(() => {
               </div>
             </div>
 
-            {restRunning ? (
-              <div className="rounded-2xl border border-foreground/20 bg-card/80 p-3 shadow-[0_12px_26px_rgba(0,0,0,0.2)]">
-                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  Rest timer
-                </div>
-                <div className="mt-2 text-3xl font-display">
-                  {String(Math.floor(restSeconds / 60)).padStart(2, "0")}:
-                  {String(restSeconds % 60).padStart(2, "0")}
-                </div>
-                <div className="mt-2 h-1.5 rounded-full bg-muted/60">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{
-                      width: `${restTargetSec ? Math.max(0, Math.min(100, ((restTargetSec - restSeconds) / restTargetSec) * 100)) : 0}%`,
-                    }}
-                  />
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-xl"
-                    onClick={() => {
-                      const delta = Math.min(15, restSeconds);
-                      const next = Math.max(0, restSeconds - delta);
-                      setRestSeconds(next);
-                      setRestTargetSec(Math.max(restTargetSec - delta, 0));
-                      setTotalRestSec((v) => Math.max(0, v - delta));
-                    }}
-                  >
-                    -15s
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="rounded-xl"
-                    onClick={() => setRestRunning((v) => !v)}
-                  >
-                    {restRunning ? "Pause" : "Start"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-xl"
-                    onClick={() => {
-                      setRestSeconds(restSeconds + 15);
-                      setRestTargetSec(restTargetSec + 15);
-                      setTotalRestSec((v) => v + 15);
-                    }}
-                  >
-                    +15s
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-xl"
-                    onClick={() => {
-                      setRestRunning(false);
-                      setTotalRestSec((v) => Math.max(0, v - restSeconds));
-                      setRestSeconds(0);
-                      setRestTargetSec(0);
-                      setAutoAdvanceAfterRest(false);
-                    }}
-                  >
-                    Skip rest
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-foreground/15 bg-card/80 p-3 space-y-1.5">
+              {!restRunning ? (
+                <div className="rounded-2xl border border-foreground/15 bg-card/80 p-3 space-y-1.5">
                 {warmupSets.length ? (
                   <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                     <span>Warm-up</span>
@@ -4687,70 +4758,6 @@ const headerStats = useMemo(() => {
                       onChange={(e) => updateGymSet({ notes: e.target.value })}
                       placeholder="Quick note..."
                     />
-                  </div>
-                ) : null}
-                {restPickerOpen ? (
-                  <div className="rounded-xl border border-foreground/10 bg-background/70 p-2 space-y-2">
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                      Select rest
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {[30, 60, 90, 120].map((sec) => (
-                        <Button
-                          key={sec}
-                          size="sm"
-                          variant="outline"
-                          className="rounded-lg h-7 px-2 text-[11px]"
-                          onClick={() => {
-                            setRestPickerOpen(false);
-                            setRestSeconds(sec);
-                            setRestTargetSec(sec);
-                            setRestRunning(sec > 0);
-                            setAutoAdvanceAfterRest(true);
-                            if (sec > 0) {
-                              setTotalRestSec((v) => v + sec);
-                              setRestCount((v) => v + 1);
-                            } else {
-                              advanceGymStep();
-                            }
-                          }}
-                        >
-                          {formatMMSS(sec)}
-                        </Button>
-                      ))}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-lg h-7 px-2 text-[11px]"
-                        onClick={() => {
-                          const sec = currentGymEntry?.templateHint?.restSec ?? 90;
-                          setRestPickerOpen(false);
-                          setRestSeconds(sec);
-                          setRestTargetSec(sec);
-                          setRestRunning(sec > 0);
-                          setAutoAdvanceAfterRest(true);
-                          if (sec > 0) {
-                            setTotalRestSec((v) => v + sec);
-                            setRestCount((v) => v + 1);
-                          } else {
-                            advanceGymStep();
-                          }
-                        }}
-                      >
-                        Use target
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="rounded-lg h-7 px-2 text-[11px]"
-                        onClick={() => {
-                          setRestPickerOpen(false);
-                          advanceGymStep();
-                        }}
-                      >
-                        Skip rest
-                      </Button>
-                    </div>
                   </div>
                 ) : null}
                 <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">

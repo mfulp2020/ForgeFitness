@@ -197,6 +197,7 @@ type Settings = {
   powerliftingMode: boolean;
   simpleMode?: boolean;
   darkMode: boolean;
+  darkModeSource?: "system" | "manual";
   role: UserRole;
   theme: Theme;
   schedule: WeekSchedule;
@@ -1830,6 +1831,7 @@ const defaultState: AppState = {
     powerliftingMode: false,
     simpleMode: false,
     darkMode: false,
+    darkModeSource: "system",
     role: "athlete",
     theme: "iron",
     schedule: emptySchedule,
@@ -1922,6 +1924,8 @@ export default function WorkoutTrackerApp() {
         ...defaultState.settings,
         ...(parsed as any).settings,
         role: normalizeRole((parsed as any)?.settings?.role),
+        darkModeSource:
+          (parsed as any)?.settings?.darkModeSource === "manual" ? "manual" : "system",
         theme:
           (parsed as any)?.settings?.theme === "iron" ||
           (parsed as any)?.settings?.theme === "dune" ||
@@ -1973,11 +1977,36 @@ export default function WorkoutTrackerApp() {
 // Dark mode (shadcn / Tailwind compatible)
 useEffect(() => {
   if (typeof window === "undefined") return;
-  document.documentElement.classList.toggle(
-    "dark",
-    !!state.settings.darkMode
-  );
-}, [state.settings.darkMode]);
+  const media = window.matchMedia("(prefers-color-scheme: dark)");
+  const apply = (dark: boolean) => {
+    document.documentElement.classList.toggle("dark", dark);
+  };
+  if (state.settings.darkModeSource === "system") {
+    const sync = () => {
+      const next = media.matches;
+      apply(next);
+      setState((p) => {
+        if (p.settings.darkMode === next) return p;
+        return { ...p, settings: { ...p.settings, darkMode: next } };
+      });
+    };
+    sync();
+    const handler = () => sync();
+    if (media.addEventListener) {
+      media.addEventListener("change", handler);
+    } else {
+      media.addListener(handler);
+    }
+    return () => {
+      if (media.removeEventListener) {
+        media.removeEventListener("change", handler);
+      } else {
+        media.removeListener(handler);
+      }
+    };
+  }
+  apply(!!state.settings.darkMode);
+}, [state.settings.darkMode, state.settings.darkModeSource]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -9920,12 +9949,38 @@ function SettingsPanel({
           <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Theme</div>
           <div className="flex items-center justify-between gap-3">
             <div>
+              <div className="font-medium text-sm">Follow system</div>
+              <div className="text-xs text-muted-foreground">Match your device appearance.</div>
+            </div>
+            <Switch
+              checked={settings.darkModeSource !== "manual"}
+              onCheckedChange={(v) => {
+                if (typeof window !== "undefined") {
+                  const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+                  onChange({
+                    ...settings,
+                    darkModeSource: v ? "system" : "manual",
+                    darkMode: v ? systemDark : settings.darkMode,
+                  });
+                  return;
+                }
+                onChange({
+                  ...settings,
+                  darkModeSource: v ? "system" : "manual",
+                });
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <div>
               <div className="font-medium text-sm">Dark mode</div>
-              <div className="text-xs text-muted-foreground">Toggle theme for this device.</div>
+              <div className="text-xs text-muted-foreground">Override the system appearance.</div>
             </div>
             <Switch
               checked={settings.darkMode}
-              onCheckedChange={(v) => onChange({ ...settings, darkMode: v })}
+              onCheckedChange={(v) =>
+                onChange({ ...settings, darkMode: v, darkModeSource: "manual" })
+              }
             />
           </div>
           <div className="flex items-center justify-between gap-3">

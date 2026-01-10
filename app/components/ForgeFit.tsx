@@ -3421,6 +3421,33 @@ useEffect(() => {
     [authUser, commentDrafts, supabase]
   );
 
+  const acceptFriendRequest = useCallback(
+    async (requestId: string, fromId: string) => {
+      if (!supabase || !authUser) return;
+      await supabase.from("friendships").insert([
+        { user_id: authUser.id, friend_id: fromId },
+        { user_id: fromId, friend_id: authUser.id },
+      ]);
+      await supabase.from("friend_requests").delete().eq("id", requestId);
+      setFriendRequests((prev) => prev.filter((r) => r.id !== requestId));
+      setFriends((prev) =>
+        prev.some((f) => f.userId === fromId)
+          ? prev
+          : [...prev, { userId: fromId, username: "Athlete" }]
+      );
+    },
+    [authUser, supabase]
+  );
+
+  const declineFriendRequest = useCallback(
+    async (requestId: string) => {
+      if (!supabase) return;
+      await supabase.from("friend_requests").delete().eq("id", requestId);
+      setFriendRequests((prev) => prev.filter((r) => r.id !== requestId));
+    },
+    [supabase]
+  );
+
   const scheduledDayLabel = (key: Weekday) => {
     const schedule = state.settings.schedule || emptySchedule;
     const entry = schedule[key];
@@ -5756,7 +5783,7 @@ const headerStats = useMemo(() => {
                                   <Button
                                     size="sm"
                                     className="rounded-xl"
-                                    onClick={() => acceptFriendRequest(req.id, req.userId)}
+                                    onClick={() => acceptFriendRequest(req.id, req.fromId)}
                                   >
                                     Accept
                                   </Button>

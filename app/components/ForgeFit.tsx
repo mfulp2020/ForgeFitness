@@ -8375,12 +8375,12 @@ function GetStartedScreen({ onStart }: { onStart: () => void }) {
           <div className="relative z-10 w-full max-w-xl space-y-5 rounded-3xl border border-foreground/20 bg-background/85 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.4)] backdrop-blur">
             <div className="flex flex-wrap items-center gap-3">
               <img
-                src="/branding/forge-fitness-icon-1024.png"
+                src="/Branding/forge-fitness-icon-1024.png"
                 alt="Forge Fitness icon"
                 className="h-10 w-10 rounded-xl border border-primary/30 bg-black"
               />
               <img
-                src="/branding/forge-fitness-logo-transparent.png"
+                src="/Branding/forge-fitness-logo-transparent.png"
                 alt="Forge Fitness"
                 className="h-8 w-auto"
               />
@@ -8659,12 +8659,12 @@ function OnboardingScreen({
           <CardHeader>
             <div className="flex flex-wrap items-center gap-3">
               <img
-                src="/branding/forge-fitness-icon-1024.png"
+                src="/Branding/forge-fitness-icon-1024.png"
                 alt="Forge Fitness icon"
                 className="h-9 w-9 rounded-xl border border-primary/30 bg-black"
               />
               <img
-                src="/branding/forge-fitness-logo-transparent.png"
+                src="/Branding/forge-fitness-logo-transparent.png"
                 alt="Forge Fitness"
                 className="h-7 w-auto"
               />

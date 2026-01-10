@@ -8372,8 +8372,9 @@ function GetStartedScreen({ onStart }: { onStart: () => void }) {
             <img
               src="/Branding/forge-fitness-icon-1024.png"
               alt=""
-              className="absolute left-1/2 top-1/2 h-[420px] w-[420px] -translate-x-1/2 -translate-y-1/2 opacity-15 blur-[1px]"
+              className="absolute left-1/2 top-1/2 h-[460px] w-[460px] -translate-x-1/2 -translate-y-1/2 opacity-20 blur-[0.5px] rotate-[-6deg] mix-blend-screen"
             />
+            <div className="absolute left-1/2 top-1/2 h-[520px] w-[520px] -translate-x-1/2 -translate-y-1/2 opacity-25 bg-[radial-gradient(closest-side,rgba(255,122,24,0.25),transparent)]" />
             <div className="absolute inset-0 bg-gradient-to-r from-background via-background/85 to-background/20" />
             <div className="absolute inset-0 bg-black/30" />
           </div>
@@ -8381,12 +8382,12 @@ function GetStartedScreen({ onStart }: { onStart: () => void }) {
             <div className="inline-flex items-center gap-2 rounded-full border border-foreground/20 px-4 py-2 text-xs uppercase tracking-[0.3em] text-muted-foreground">
               Forge Fitness • Iron Edition
             </div>
-            <div className="text-4xl md:text-5xl font-display uppercase tracking-[0.22em]">
-              This is your line in the sand.
+            <div className="text-4xl md:text-5xl font-display uppercase tracking-[0.22em] text-black drop-shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
+              Built in the forge. Earned in the gym.
             </div>
-            <div className="text-sm text-muted-foreground leading-relaxed">
-              Forge Fitness is built for people who want real change. You are about to lock in your
-              training, track every set, and build momentum that lasts.
+            <div className="text-sm text-foreground/80 leading-relaxed">
+              Forge Fitness is where strength gets built. Lock in your sessions, track every set,
+              and shape a physique that lasts.
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex items-center gap-2">

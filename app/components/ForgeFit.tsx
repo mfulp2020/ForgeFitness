@@ -4665,114 +4665,114 @@ const headerStats = useMemo(() => {
 
               {!restRunning ? (
                 <div className="rounded-2xl border border-foreground/15 bg-card/80 p-3 space-y-1.5">
-                {warmupSets.length ? (
-                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <span>Warm-up</span>
-                    {warmupSets.map((w) => (
-                      <Button
-                        key={w}
-                        size="sm"
-                        variant="outline"
-                        className="rounded-lg h-6 px-2 text-[11px]"
-                        onClick={() => updateGymSet({ weight: String(w) })}
-                      >
-                        {w} {state.settings.units}
-                      </Button>
-                    ))}
-                  </div>
-                ) : null}
-                {currentGymEntry?.templateHint?.timeUnit ? null : (
-                  <MetricStepper
-                    label="Weight"
-                    value={weightValue || 0}
-                    min={0}
-                    max={weightConfig.max}
-                    step={weightStep}
-                    unit={state.settings.units}
-                    onChange={(v) => updateGymSet({ weight: String(v) })}
-                    quickValues={weightQuickValues}
-                    quickAdjust={(state.settings.units === "lb"
-                      ? [
-                          { label: "+2.5", delta: 2.5 },
-                          { label: "+5", delta: 5 },
-                          { label: "+10", delta: 10 },
-                          { label: "+25", delta: 25 },
-                          { label: "+35", delta: 35 },
-                          { label: "+45", delta: 45 },
-                        ]
-                      : [
+                  {warmupSets.length ? (
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <span>Warm-up</span>
+                      {warmupSets.map((w) => (
+                        <Button
+                          key={w}
+                          size="sm"
+                          variant="outline"
+                          className="rounded-lg h-6 px-2 text-[11px]"
+                          onClick={() => updateGymSet({ weight: String(w) })}
+                        >
+                          {w} {state.settings.units}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {currentGymEntry?.templateHint?.timeUnit ? null : (
+                    <MetricStepper
+                      label="Weight"
+                      value={weightValue || 0}
+                      min={0}
+                      max={weightConfig.max}
+                      step={weightStep}
+                      unit={state.settings.units}
+                      onChange={(v) => updateGymSet({ weight: String(v) })}
+                      quickValues={weightQuickValues}
+                      quickAdjust={(state.settings.units === "lb"
+                        ? [
+                            { label: "+2.5", delta: 2.5 },
+                            { label: "+5", delta: 5 },
+                            { label: "+10", delta: 10 },
+                            { label: "+25", delta: 25 },
+                            { label: "+35", delta: 35 },
+                            { label: "+45", delta: 45 },
+                          ]
+                        : [
+                            { label: "+1", delta: 1 },
+                            { label: "+2.5", delta: 2.5 },
+                            { label: "+5", delta: 5 },
+                            { label: "+10", delta: 10 },
+                            { label: "+15", delta: 15 },
+                            { label: "+20", delta: 20 },
+                          ])}
+                      size="md"
+                      compact
+                    />
+                  )}
+                  {currentGymEntry?.templateHint?.timeUnit ? null : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <MetricStepper
+                        label="Reps"
+                        value={Number(currentGymSet?.reps) || 0}
+                        min={1}
+                        max={30}
+                        step={1}
+                        onChange={(v) => updateGymSet({ reps: String(v) })}
+                        quickValues={[6, 8, 10, 12, 15, 20]}
+                        quickAdjust={[
                           { label: "+1", delta: 1 },
-                          { label: "+2.5", delta: 2.5 },
+                          { label: "+2", delta: 2 },
                           { label: "+5", delta: 5 },
-                          { label: "+10", delta: 10 },
-                          { label: "+15", delta: 15 },
-                          { label: "+20", delta: 20 },
-                        ])}
-                    size="md"
-                    compact
-                  />
-                )}
-                {currentGymEntry?.templateHint?.timeUnit ? null : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <MetricStepper
-                      label="Reps"
-                      value={Number(currentGymSet?.reps) || 0}
-                      min={1}
-                      max={30}
-                      step={1}
-                      onChange={(v) => updateGymSet({ reps: String(v) })}
-                      quickValues={[6, 8, 10, 12, 15, 20]}
-                      quickAdjust={[
-                        { label: "+1", delta: 1 },
-                        { label: "+2", delta: 2 },
-                        { label: "+5", delta: 5 },
-                        { label: "-1", delta: -1 },
-                      ]}
-                      size="md"
-                      compact
-                    />
-                    <MetricStepper
-                      label="RPE"
-                      value={Number(currentGymSet?.rpe) || 6}
-                      min={6}
-                      max={10}
-                      step={0.5}
-                      onChange={(v) => updateGymSet({ rpe: String(v) })}
-                      quickValues={[6, 7, 8, 9, 10]}
-                      quickAdjust={[
-                        { label: "+0.5", delta: 0.5 },
-                        { label: "+1", delta: 1 },
-                        { label: "-0.5", delta: -0.5 },
-                      ]}
-                      helperText="10 = max, 8 = ~2 reps left"
-                      size="md"
-                      compact
-                    />
+                          { label: "-1", delta: -1 },
+                        ]}
+                        size="md"
+                        compact
+                      />
+                      <MetricStepper
+                        label="RPE"
+                        value={Number(currentGymSet?.rpe) || 6}
+                        min={6}
+                        max={10}
+                        step={0.5}
+                        onChange={(v) => updateGymSet({ rpe: String(v) })}
+                        quickValues={[6, 7, 8, 9, 10]}
+                        quickAdjust={[
+                          { label: "+0.5", delta: 0.5 },
+                          { label: "+1", delta: 1 },
+                          { label: "-0.5", delta: -0.5 },
+                        ]}
+                        helperText="10 = max, 8 = ~2 reps left"
+                        size="md"
+                        compact
+                      />
+                    </div>
+                  )}
+                  {showGymNotes ? (
+                    <div className="space-y-1">
+                      <Label>Notes</Label>
+                      <Input
+                        value={currentGymSet?.notes || ""}
+                        onChange={(e) => updateGymSet({ notes: e.target.value })}
+                        placeholder="Quick note..."
+                      />
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-lg h-6 px-2 text-[11px]"
+                      onClick={() => setShowGymNotes((v) => !v)}
+                    >
+                      {showGymNotes ? "Hide notes" : "Add note"}
+                    </Button>
                   </div>
-                )}
-                {showGymNotes ? (
-                  <div className="space-y-1">
-                    <Label>Notes</Label>
-                    <Input
-                      value={currentGymSet?.notes || ""}
-                      onChange={(e) => updateGymSet({ notes: e.target.value })}
-                      placeholder="Quick note..."
-                    />
-                  </div>
-                ) : null}
-                <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="rounded-lg h-6 px-2 text-[11px]"
-                    onClick={() => setShowGymNotes((v) => !v)}
-                  >
-                    {showGymNotes ? "Hide notes" : "Add note"}
-                  </Button>
                 </div>
-              </div>
-            )}
+              ) : null}
           </div>
 
           <div className="sticky bottom-2">

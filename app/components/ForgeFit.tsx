@@ -2127,9 +2127,11 @@ useEffect(() => {
   }, [supabaseEnabled, authUser, isCoach, supabase]);
 
   useEffect(() => {
-    if (!supabaseEnabled || !authUser || !supabase) return;
+    if (!supabaseEnabled || !authUser) return;
+    const supabaseClient = supabase;
+    if (!supabaseClient) return;
     const loadSocial = async () => {
-      const friendsRes = await supabase
+      const friendsRes = await supabaseClient
         .from("friendships")
         .select("friend_id, friend:profiles(username)")
         .eq("user_id", authUser.id);
@@ -2144,7 +2146,7 @@ useEffect(() => {
         );
       }
 
-      const requestRes = await supabase
+      const requestRes = await supabaseClient
         .from("friend_requests")
         .select("id, requester_id, requester:profiles(username)")
         .eq("addressee_id", authUser.id)
@@ -2161,7 +2163,7 @@ useEffect(() => {
 
       const ids = [authUser.id, ...(friendsRes.data || []).map((f: any) => f.friend_id)].filter(Boolean);
       if (ids.length) {
-        const feedRes = await supabase
+        const feedRes = await supabaseClient
           .from("social_posts")
           .select("id, actor_id, type, payload, created_at, actor:profiles(username)")
           .in("actor_id", ids)
@@ -2179,8 +2181,8 @@ useEffect(() => {
           const postIds = mapped.map((p) => p.id);
           if (postIds.length) {
             const [likesRes, commentsRes] = await Promise.all([
-              supabase.from("social_likes").select("post_id, user_id").in("post_id", postIds),
-              supabase
+              supabaseClient.from("social_likes").select("post_id, user_id").in("post_id", postIds),
+              supabaseClient
                 .from("social_comments")
                 .select("id, post_id, body, created_at, author:profiles(username)")
                 .in("post_id", postIds)
@@ -2215,14 +2217,14 @@ useEffect(() => {
       }
 
       const nowIso = new Date().toISOString().slice(0, 10);
-      const challengeRes = await supabase
+      const challengeRes = await supabaseClient
         .from("challenges")
         .select("id, title, type, start_date, end_date")
         .gte("end_date", nowIso)
         .order("start_date", { ascending: false })
         .limit(8);
       if (!challengeRes.error) {
-        const participantRes = await supabase
+        const participantRes = await supabaseClient
           .from("challenge_participants")
           .select("challenge_id")
           .eq("user_id", authUser.id);
@@ -2239,7 +2241,7 @@ useEffect(() => {
         );
       }
 
-      const invitesRes = await supabase
+      const invitesRes = await supabaseClient
         .from("workout_invites")
         .select("id, sender_id, template, sender:profiles(username)")
         .eq("recipient_id", authUser.id)

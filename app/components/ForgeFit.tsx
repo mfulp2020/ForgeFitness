@@ -195,6 +195,7 @@ type Settings = {
   autoGoalHorizonWeeks: number;
   strictRepRangeForProgress: boolean;
   powerliftingMode: boolean;
+  simpleMode?: boolean;
   darkMode: boolean;
   role: UserRole;
   theme: Theme;
@@ -1827,6 +1828,7 @@ const defaultState: AppState = {
     autoGoalHorizonWeeks: 6,
     strictRepRangeForProgress: true,
     powerliftingMode: false,
+    simpleMode: false,
     darkMode: false,
     role: "athlete",
     theme: "iron",
@@ -1982,9 +1984,17 @@ useEffect(() => {
     document.documentElement.setAttribute("data-theme", state.settings.theme || "neon");
   }, [state.settings.theme]);
 
+  useEffect(() => {
+    if (!simpleMode) return;
+    if (activeTab === "social" || activeTab === "profile") {
+      setActiveTab("dashboard");
+    }
+  }, [simpleMode, activeTab]);
+
   const [activeTab, setActiveTab] = useState<
     "dashboard" | "social" | "profile" | "more"
   >("dashboard");
+  const simpleMode = !!state.settings.simpleMode;
   const [selectedTemplateId, setSelectedTemplateId] = useState(
     state.templates?.[0]?.id || ""
   );
@@ -4585,7 +4595,7 @@ const headerStats = useMemo(() => {
                 </div>
               </div>
             ) : (
-              <div className="rounded-2xl border border-foreground/15 bg-card/80 p-3 space-y-2">
+              <div className="rounded-2xl border border-foreground/15 bg-card/80 p-3 space-y-1.5">
                 {warmupSets.length ? (
                   <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                     <span>Warm-up</span>
@@ -4618,16 +4628,16 @@ const headerStats = useMemo(() => {
                           { label: "+5", delta: 5 },
                           { label: "+10", delta: 10 },
                           { label: "+25", delta: 25 },
-                          { label: "-5", delta: -5 },
-                          { label: "-10", delta: -10 },
+                          { label: "+35", delta: 35 },
+                          { label: "+45", delta: 45 },
                         ]
                       : [
                           { label: "+1", delta: 1 },
                           { label: "+2.5", delta: 2.5 },
                           { label: "+5", delta: 5 },
                           { label: "+10", delta: 10 },
-                          { label: "-2.5", delta: -2.5 },
-                          { label: "-5", delta: -5 },
+                          { label: "+15", delta: 15 },
+                          { label: "+20", delta: 20 },
                         ])}
                   />
                 )}
@@ -5295,7 +5305,7 @@ const headerStats = useMemo(() => {
                   <div className="mx-auto h-[3px] w-32 rounded-full bg-gradient-to-r from-transparent via-[#ff5a1f] to-transparent" />
                 </div>
 
-                {isBirthday ? (
+                {!simpleMode && isBirthday ? (
                   <motion.div variants={cardMotion}>
                     <Card className="rounded-2xl shadow-md card-hero">
                       <CardHeader>
@@ -5326,6 +5336,7 @@ const headerStats = useMemo(() => {
                   </motion.div>
                 ) : null}
 
+                {!simpleMode ? (
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-edge">
                     <CardHeader>
@@ -5357,7 +5368,9 @@ const headerStats = useMemo(() => {
                     </CardContent>
                   </Card>
                 </motion.div>
+                ) : null}
 
+                {!simpleMode ? (
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-edge">
                     <CardHeader>
@@ -5390,7 +5403,9 @@ const headerStats = useMemo(() => {
                     </CardContent>
                   </Card>
                 </motion.div>
+                ) : null}
 
+                {!simpleMode ? (
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-minimal">
                   <CardHeader>
@@ -5431,6 +5446,7 @@ const headerStats = useMemo(() => {
                   </CardContent>
                   </Card>
                 </motion.div>
+                ) : null}
 
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-hero">
@@ -5557,6 +5573,7 @@ const headerStats = useMemo(() => {
                   </Card>
                 </motion.div>
 
+                {!simpleMode ? (
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-glass">
                     <CardHeader>
@@ -5606,7 +5623,9 @@ const headerStats = useMemo(() => {
                     </CardContent>
                   </Card>
                 </motion.div>
+                ) : null}
 
+                {!simpleMode ? (
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-glass">
                 <CardHeader>
@@ -5696,8 +5715,9 @@ const headerStats = useMemo(() => {
                 </CardContent>
                   </Card>
                 </motion.div>
+                ) : null}
 
-              {state.settings.powerliftingMode ? (
+              {!simpleMode && state.settings.powerliftingMode ? (
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-glass">
                   <CardHeader>
@@ -5731,6 +5751,7 @@ const headerStats = useMemo(() => {
                 </motion.div>
               ) : null}
 
+              {!simpleMode ? (
               <motion.div variants={cardMotion}>
                 <Card className="rounded-2xl shadow-md card-edge">
                 <CardHeader>
@@ -5758,7 +5779,9 @@ const headerStats = useMemo(() => {
                 </CardContent>
                 </Card>
               </motion.div>
+              ) : null}
 
+              {!simpleMode ? (
               <motion.div variants={cardMotion}>
                 <Card className="rounded-2xl shadow-md card-glass">
                 <CardHeader>
@@ -5789,7 +5812,9 @@ const headerStats = useMemo(() => {
                 </CardContent>
                 </Card>
               </motion.div>
+              ) : null}
 
+              {!simpleMode ? (
               <motion.div variants={cardMotion}>
                 <Card className="rounded-2xl shadow-md card-glass">
                   <CardHeader>
@@ -5843,6 +5868,7 @@ const headerStats = useMemo(() => {
                   </CardContent>
                 </Card>
               </motion.div>
+              ) : null}
 
               <motion.div variants={cardMotion}>
                 <Card className="rounded-2xl shadow-md">
@@ -5897,6 +5923,7 @@ const headerStats = useMemo(() => {
             </motion.div>
             </TabsContent>
 
+            {!simpleMode ? (
             <TabsContent value="social" className="mt-0">
               <motion.div variants={pageMotion} initial="hidden" animate="show" className="space-y-4">
                 <div className="flex flex-col gap-3">
@@ -6506,7 +6533,9 @@ const headerStats = useMemo(() => {
                 </Dialog>
               </motion.div>
             </TabsContent>
+            ) : null}
 
+            {!simpleMode ? (
             <TabsContent value="profile" className="mt-0">
               <motion.div variants={pageMotion} initial="hidden" animate="show" className="space-y-4">
                 <motion.div variants={cardMotion}>
@@ -6956,14 +6985,17 @@ const headerStats = useMemo(() => {
                 </motion.div>
               </motion.div>
             </TabsContent>
+            ) : null}
 
             <TabsContent value="more" className="mt-0">
               <motion.div variants={pageMotion} initial="hidden" animate="show" className="space-y-4">
                 <div>
                 <div className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
-                  Tools & settings
+                  {simpleMode ? "Settings" : "Tools & settings"}
                 </div>
-                <div className="text-3xl font-display uppercase">More</div>
+                <div className="text-3xl font-display uppercase">
+                  {simpleMode ? "Settings" : "More"}
+                </div>
                 </div>
 
                 <motion.div variants={cardMotion}>
@@ -6981,31 +7013,36 @@ const headerStats = useMemo(() => {
                         Account & settings
                       </Button>
                     </motion.div>
-                    <motion.div variants={listItemMotion}>
-                      <Button variant="outline" className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
-                        Workout templates
-                      </Button>
-                    </motion.div>
-                    <motion.div variants={listItemMotion}>
-                      <Button variant="outline" className="rounded-xl" onClick={() => setGeneratorOpen(true)}>
-                        Generate workouts
-                      </Button>
-                    </motion.div>
-                    <motion.div variants={listItemMotion}>
-                      <Button variant="outline" className="rounded-xl" onClick={() => setImportDialogOpen(true)}>
-                        Import data
-                      </Button>
-                    </motion.div>
-                    <motion.div variants={listItemMotion}>
-                      <Button variant="outline" className="rounded-xl" onClick={exportData}>
-                        Export data
-                      </Button>
-                    </motion.div>
+                    {!simpleMode ? (
+                      <>
+                        <motion.div variants={listItemMotion}>
+                          <Button variant="outline" className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
+                            Workout templates
+                          </Button>
+                        </motion.div>
+                        <motion.div variants={listItemMotion}>
+                          <Button variant="outline" className="rounded-xl" onClick={() => setGeneratorOpen(true)}>
+                            Generate workouts
+                          </Button>
+                        </motion.div>
+                        <motion.div variants={listItemMotion}>
+                          <Button variant="outline" className="rounded-xl" onClick={() => setImportDialogOpen(true)}>
+                            Import data
+                          </Button>
+                        </motion.div>
+                        <motion.div variants={listItemMotion}>
+                          <Button variant="outline" className="rounded-xl" onClick={exportData}>
+                            Export data
+                          </Button>
+                        </motion.div>
+                      </>
+                    ) : null}
                   </motion.div>
                 </CardContent>
                   </Card>
                 </motion.div>
 
+                {!simpleMode ? (
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md">
                 <CardHeader>
@@ -7039,11 +7076,12 @@ const headerStats = useMemo(() => {
                       ))}
                     </motion.div>
                   )}
-                </CardContent>
-                  </Card>
+                  </CardContent>
+                </Card>
                 </motion.div>
+                ) : null}
 
-              {isCoach ? (
+              {!simpleMode && isCoach ? (
                 <motion.div variants={listMotion} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <motion.div variants={cardMotion}>
                     <Card className="rounded-2xl shadow-md">
@@ -7253,16 +7291,18 @@ const headerStats = useMemo(() => {
               <Home className="h-5 w-5" />
               Home
             </button>
-            <button
-              type="button"
-              className={`flex min-w-[64px] flex-col items-center gap-1 text-[0.65rem] uppercase tracking-[0.2em] ${
-                activeTab === "social" ? "text-foreground" : "text-muted-foreground"
-              }`}
-              onClick={() => setActiveTab("social")}
-            >
-              <Heart className="h-5 w-5" />
-              Social
-            </button>
+            {!simpleMode ? (
+              <button
+                type="button"
+                className={`flex min-w-[64px] flex-col items-center gap-1 text-[0.65rem] uppercase tracking-[0.2em] ${
+                  activeTab === "social" ? "text-foreground" : "text-muted-foreground"
+                }`}
+                onClick={() => setActiveTab("social")}
+              >
+                <Heart className="h-5 w-5" />
+                Social
+              </button>
+            ) : null}
 
             <button
               type="button"
@@ -7272,16 +7312,18 @@ const headerStats = useMemo(() => {
               <Play className="h-7 w-7" />
             </button>
 
-            <button
-              type="button"
-              className={`flex min-w-[64px] flex-col items-center gap-1 text-[0.65rem] uppercase tracking-[0.2em] ${
-                activeTab === "profile" ? "text-foreground" : "text-muted-foreground"
-              }`}
-              onClick={() => setActiveTab("profile")}
-            >
-              <User className="h-5 w-5" />
-              Profile
-            </button>
+            {!simpleMode ? (
+              <button
+                type="button"
+                className={`flex min-w-[64px] flex-col items-center gap-1 text-[0.65rem] uppercase tracking-[0.2em] ${
+                  activeTab === "profile" ? "text-foreground" : "text-muted-foreground"
+                }`}
+                onClick={() => setActiveTab("profile")}
+              >
+                <User className="h-5 w-5" />
+                Profile
+              </button>
+            ) : null}
             <button
               type="button"
               className={`flex min-w-[64px] flex-col items-center gap-1 text-[0.65rem] uppercase tracking-[0.2em] ${
@@ -7289,8 +7331,8 @@ const headerStats = useMemo(() => {
               }`}
               onClick={() => setActiveTab("more")}
             >
-              <MoreHorizontal className="h-5 w-5" />
-              More
+              {simpleMode ? <SettingsIcon className="h-5 w-5" /> : <MoreHorizontal className="h-5 w-5" />}
+              {simpleMode ? "Settings" : "More"}
             </button>
           </div>
         </div>
@@ -7760,7 +7802,7 @@ function MetricStepper({
       </div>
 
       {uniqueQuick.length ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
             Quick set
           </div>
@@ -7779,7 +7821,7 @@ function MetricStepper({
       ) : null}
 
       {quickAdjust.length ? (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
           <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
             Quick adjust
           </div>
@@ -9434,16 +9476,7 @@ function OnboardingScreen({
                           height: String(v),
                         }))
                       }
-                      quickValues={
-                        settings.units === "kg"
-                          ? [160, 170, 175, 180, 190]
-                          : [62, 66, 68, 70, 74]
-                      }
-                      quickAdjust={[
-                        { label: "+1", delta: 1 },
-                        { label: "+2", delta: 2 },
-                        { label: "-1", delta: -1 },
-                      ]}
+                      helperText="Tap +/− to adjust"
                       size="md"
                     />
                   </div>
@@ -9462,17 +9495,7 @@ function OnboardingScreen({
                           weight: String(v),
                         }))
                       }
-                      quickValues={
-                        settings.units === "kg"
-                          ? [60, 70, 80, 90, 100]
-                          : [120, 150, 180, 200, 225]
-                      }
-                      quickAdjust={[
-                        { label: "+1", delta: 1 },
-                        { label: "+2.5", delta: 2.5 },
-                        { label: "+5", delta: 5 },
-                        { label: "-2.5", delta: -2.5 },
-                      ]}
+                      helperText="Tap +/− to adjust"
                       size="md"
                     />
                   </div>
@@ -9751,6 +9774,24 @@ function SettingsPanel({
 
       <div className="rounded-xl border p-3 space-y-5">
         <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Mode</div>
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/10 bg-background/60 px-3 py-2">
+            <div>
+              <div className="font-medium text-sm">Simple mode</div>
+              <div className="text-xs text-muted-foreground">
+                Minimal dashboard with just today&apos;s workout and weekly overview.
+              </div>
+            </div>
+            <Switch
+              checked={!!settings.simpleMode}
+              onCheckedChange={(v) => onChange({ ...settings, simpleMode: v })}
+            />
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
           <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Profile</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <div className="space-y-1 md:col-span-2">
@@ -9837,16 +9878,7 @@ function SettingsPanel({
                 step={1}
                 displayValue={formatHeightValue(heightSliderValue, settings.units)}
                 onChange={(v) => updateProfile({ height: String(v) })}
-                quickValues={
-                  settings.units === "kg"
-                    ? [160, 170, 175, 180, 190]
-                    : [62, 66, 68, 70, 74]
-                }
-                quickAdjust={[
-                  { label: "+1", delta: 1 },
-                  { label: "+2", delta: 2 },
-                  { label: "-1", delta: -1 },
-                ]}
+                helperText="Tap +/− to adjust"
                 size="md"
               />
             </div>
@@ -9860,17 +9892,7 @@ function SettingsPanel({
                 step={1}
                 unit={settings.units}
                 onChange={(v) => updateProfile({ weight: String(v) })}
-                quickValues={
-                  settings.units === "kg"
-                    ? [60, 70, 80, 90, 100]
-                    : [120, 150, 180, 200, 225]
-                }
-                quickAdjust={[
-                  { label: "+1", delta: 1 },
-                  { label: "+2.5", delta: 2.5 },
-                  { label: "+5", delta: 5 },
-                  { label: "-2.5", delta: -2.5 },
-                ]}
+                helperText="Tap +/− to adjust"
                 size="md"
               />
             </div>
@@ -10593,16 +10615,16 @@ function TemplateManagerDialog({
   const [importText, setImportText] = useState("");
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [exerciseGroup, setExerciseGroup] = useState<
-    "all" | "push" | "pull" | "legs" | "shoulders" | "arms" | "core" | "cardio"
+    "all" | "arms" | "chest" | "shoulders" | "back" | "legs" | "core" | "cardio"
   >("all");
 
   const exerciseGroups = [
     { key: "all", label: "All", test: (_: string) => true },
-    { key: "push", label: "Push", test: (n: string) => /bench|press|fly|dip|pushdown|tricep/.test(n) },
-    { key: "pull", label: "Pull", test: (n: string) => /row|pull|pulldown|lat|rear delt/.test(n) },
-    { key: "legs", label: "Legs", test: (n: string) => /squat|deadlift|leg|glute|ham|calf|lunge|rdl/.test(n) },
-    { key: "shoulders", label: "Shoulders", test: (n: string) => /shoulder|delt|raise|overhead/.test(n) },
-    { key: "arms", label: "Arms", test: (n: string) => /curl|bicep|tricep/.test(n) },
+    { key: "arms", label: "Arms", test: (n: string) => /curl|bicep|tricep|pushdown|extension|skull|forearm/.test(n) },
+    { key: "chest", label: "Chest", test: (n: string) => /bench|press|fly|pec|chest/.test(n) },
+    { key: "shoulders", label: "Shoulders", test: (n: string) => /shoulder|delt|raise|overhead|upright/.test(n) },
+    { key: "back", label: "Back", test: (n: string) => /row|pull|pulldown|lat|rear delt|trap/.test(n) },
+    { key: "legs", label: "Legs", test: (n: string) => /squat|deadlift|leg|glute|ham|calf|lunge|rdl|curl/.test(n) },
     { key: "core", label: "Core", test: (n: string) => /plank|crunch|twist|raise|ab/.test(n) },
     { key: "cardio", label: "Cardio", test: (n: string) => /sled|bike|rower|run|walk|stair|jump/.test(n) },
   ] as const;

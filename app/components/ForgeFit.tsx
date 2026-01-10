@@ -3806,6 +3806,34 @@ const headerStats = useMemo(() => {
     .filter((a) => a.unlockedAt)
     .sort((a, b) => String(b.unlockedAt).localeCompare(String(a.unlockedAt)))[0];
 
+  const primaryGoal = useMemo(
+    () => (state.goals || []).find((g) => g.status === "active") || null,
+    [state.goals]
+  );
+  const focusHeadline = state.settings.powerliftingMode
+    ? "Power focus"
+    : primaryGoal
+    ? "Goal focus"
+    : "Consistency focus";
+  const focusDetail = state.settings.powerliftingMode
+    ? "Chase strong top sets and tight technique today."
+    : primaryGoal
+    ? `${primaryGoal.exerciseName} • Target ${primaryGoal.targetValue}`
+    : "Stack a clean session and log every set.";
+  const nextExercisePreview = useMemo(() => {
+    const exercise = dashboardTemplate?.exercises?.[0];
+    if (!exercise) return null;
+    const repLabel = exercise.repRange
+      ? `${exercise.repRange.min}–${exercise.repRange.max} reps`
+      : "Reps";
+    return {
+      name: exercise.name,
+      sets: exercise.defaultSets || 0,
+      reps: repLabel,
+      rest: exercise.restSec ? `${Math.round(exercise.restSec / 60)} min rest` : "Rest as needed",
+    };
+  }, [dashboardTemplate]);
+
 
 
 
@@ -5310,6 +5338,56 @@ const headerStats = useMemo(() => {
                     Change the workout here if you want a different session today.
                   </div>
                 </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Target className="h-5 w-5" /> {focusHeadline}
+                      </CardTitle>
+                      <CardDescription>{focusDetail}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="rounded-2xl border border-foreground/10 bg-background/60 p-4">
+                        <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                          Focus cues
+                        </div>
+                        <div className="mt-2 space-y-2 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-primary" />
+                            Show up and hit the first set with intent.
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-primary" />
+                            Match the target reps before adding weight.
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-primary" />
+                            Log every set to unlock better suggestions.
+                          </div>
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-foreground/10 bg-background/60 p-4">
+                        <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                          Next up
+                        </div>
+                        {nextExercisePreview ? (
+                          <div className="mt-2 space-y-2 text-sm">
+                            <div className="text-lg font-display">{nextExercisePreview.name}</div>
+                            <div className="text-muted-foreground">
+                              {nextExercisePreview.sets} sets • {nextExercisePreview.reps}
+                            </div>
+                            <div className="text-muted-foreground">{nextExercisePreview.rest}</div>
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-sm text-muted-foreground">
+                            Select a workout to see what&apos;s next.
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
                   </Card>
                 </motion.div>
 

@@ -5339,12 +5339,10 @@ const headerStats = useMemo(() => {
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-hero">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                      <ClipboardList className="h-5 w-5" /> Today’s workout
+                    <CardTitle className="flex flex-col items-center gap-2 text-center font-display uppercase tracking-[0.35em] text-2xl md:text-3xl">
+                      <ClipboardList className="h-8 w-8" />
+                      Today’s workout
                     </CardTitle>
-                    <CardDescription>
-                      {scheduleInfo.templateName ? "Scheduled for today" : "No workout scheduled yet."}
-                    </CardDescription>
                   </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_auto] gap-3">

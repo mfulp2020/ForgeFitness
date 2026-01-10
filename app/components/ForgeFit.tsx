@@ -3338,11 +3338,6 @@ useEffect(() => {
     const schedule = state.settings.schedule || emptySchedule;
     return WEEKDAYS.filter((day) => Boolean(schedule[day.key]));
   }, [state.settings.schedule]);
-  const activeSplitLabel = useMemo(() => {
-    const key = state.settings.activeSplitKey;
-    if (!key) return "";
-    return formatSplitLabel(key);
-  }, [state.settings.activeSplitKey]);
 
   useEffect(() => {
     if (!socialInvitesOpen) return;
@@ -3417,6 +3412,12 @@ useEffect(() => {
     const deloadLabel = deload === "deload" ? "Deload" : "Standard";
     return `${splitLabel} • ${focusLabel} • ${expLabel} • ${days} days • ${styleLabel} • ${deloadLabel}`;
   };
+
+  const activeSplitLabel = useMemo(() => {
+    const key = state.settings.activeSplitKey;
+    if (!key) return "";
+    return formatSplitLabel(key);
+  }, [state.settings.activeSplitKey]);
 
   const socialPostSummary = (post: { type: string; payload: any }) => {
     if (post.type === "workout") {

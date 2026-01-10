@@ -3398,12 +3398,13 @@ useEffect(() => {
         .select("id, body, created_at, author:profiles(username)")
         .single();
       if (!res.error && res.data) {
+        const authorRecord = Array.isArray(res.data.author) ? res.data.author[0] : res.data.author;
         setPostComments((prev) => ({
           ...prev,
           [postId]: [
             {
               id: res.data.id,
-              author: res.data.author?.username || "You",
+              author: authorRecord?.username || "You",
               body: res.data.body,
               createdAt: res.data.created_at,
             },

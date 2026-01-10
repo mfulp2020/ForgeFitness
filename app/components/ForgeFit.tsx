@@ -9246,26 +9246,25 @@ function OnboardingScreen({
       </div>
 
       <div className="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center px-4 py-12">
-        <Card className="w-full">
+        <Card className="w-full rounded-3xl shadow-[0_24px_60px_rgba(0,0,0,0.25)] border-foreground/10 bg-card/80 backdrop-blur">
           <CardHeader>
-            <div className="flex flex-wrap items-center gap-3">
-              <img
-                src="/Branding/forge-fitness-icon-1024.png"
-                alt="Forge Fitness icon"
-                className="h-9 w-9 rounded-xl border border-primary/30 bg-black"
-              />
+            <div className="flex flex-col items-center gap-4 text-center">
               <img
                 src="/Branding/forge-fitness-logo-transparent.png"
                 alt="Forge Fitness"
-                className="h-7 w-auto"
+                className="h-8 w-auto"
               />
+              <div className="text-3xl font-display uppercase tracking-[0.35em] text-transparent bg-clip-text bg-[linear-gradient(90deg,var(--title-from),var(--title-via),var(--title-to))]">
+                Forge Fitness
+              </div>
+              <div className="h-[3px] w-28 rounded-full bg-gradient-to-r from-transparent via-[#ff5a1f] to-transparent" />
+              <CardTitle className="text-2xl font-display uppercase tracking-[0.3em]">
+                Build your base
+              </CardTitle>
+              <CardDescription>
+                Tell us a few basics so your training plan feels custom.
+              </CardDescription>
             </div>
-            <CardTitle className="text-2xl font-display uppercase tracking-[0.3em]">
-              Enter The App
-            </CardTitle>
-            <CardDescription>
-              Build your profile so Forge Fitness can dial in your goals and tracking.
-            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4 min-h-[520px]">
             <div className="space-y-2">
@@ -9273,7 +9272,7 @@ function OnboardingScreen({
                 <span>Step {step + 1} of 4</span>
                 <span>{Math.round(((step + 1) / 4) * 100)}%</span>
               </div>
-              <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+              <div className="h-2 w-full rounded-full bg-muted/70 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-primary transition-all"
                   style={{ width: `${((step + 1) / 4) * 100}%` }}
@@ -9282,7 +9281,7 @@ function OnboardingScreen({
             </div>
             <div className="space-y-4">
               {step === 0 ? (
-                <div className="space-y-3">
+                <div className="rounded-2xl border border-foreground/10 bg-background/60 p-4 space-y-3">
                 <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
                   Step 1 • Profile
                 </div>
@@ -9434,7 +9433,7 @@ function OnboardingScreen({
               ) : null}
 
               {step === 1 ? (
-                <div className="rounded-xl border p-3 space-y-3">
+                <div className="rounded-2xl border border-foreground/10 bg-background/60 p-4 space-y-3">
                   <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
                     Step 2 • Role
                   </div>
@@ -9486,7 +9485,7 @@ function OnboardingScreen({
               ) : null}
 
               {step === 2 ? (
-                <div className="rounded-xl border p-3 space-y-3">
+                <div className="rounded-2xl border border-foreground/10 bg-background/60 p-4 space-y-3">
                 <div>
                   <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
                     Step 3 • Training goal
@@ -9526,7 +9525,7 @@ function OnboardingScreen({
               ) : null}
 
               {step === 3 ? (
-                <div className="rounded-xl border p-3 space-y-3">
+                <div className="rounded-2xl border border-foreground/10 bg-background/60 p-4 space-y-3">
                 <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
                   Step 4 • Training type
                 </div>

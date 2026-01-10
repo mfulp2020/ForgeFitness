@@ -2340,6 +2340,23 @@ useEffect(() => {
     []
   );
 
+  const deleteSavedSplit = useCallback((splitKey: string) => {
+    setState((p) => {
+      const nextSavedSplits = { ...(p.savedSplits || {}) };
+      const splitTemplates = nextSavedSplits[splitKey] || [];
+      delete nextSavedSplits[splitKey];
+      const removeIds = new Set(splitTemplates.map((t) => t.id));
+      const keptTemplates = (p.templates || []).filter((t) => !removeIds.has(t.id));
+      const nextSchedule = removeTemplatesFromSchedule(p.settings.schedule, removeIds);
+      return {
+        ...p,
+        templates: keptTemplates,
+        settings: { ...p.settings, schedule: nextSchedule },
+        savedSplits: nextSavedSplits,
+      };
+    });
+  }, []);
+
   const toggleCustomSplitDay = (key: Weekday) => {
     setCustomSplitDays((prev) => {
       const next = prev.includes(key) ? prev.filter((d) => d !== key) : [...prev, key];
@@ -4504,7 +4521,7 @@ const headerStats = useMemo(() => {
                       max={30}
                       step={1}
                       tickEvery={1}
-                      tickOffset={10}
+                      tickOffset={0}
                     />
                     <BigMetricSlider
                       label="RPE"
@@ -4514,7 +4531,7 @@ const headerStats = useMemo(() => {
                       max={10}
                       step={0.5}
                       tickEvery={0.5}
-                      tickOffset={4}
+                      tickOffset={0}
                     />
                   </div>
                 )}
@@ -5327,7 +5344,7 @@ const headerStats = useMemo(() => {
                         step={weighInRange.step}
                         suffix={state.settings.units}
                         tickEvery={weighInRange.tickEvery}
-                        tickOffset={10}
+                        tickOffset={0}
                       />
                       <div className="flex flex-wrap items-center gap-2">
                         <Button className="rounded-xl flex-1" onClick={saveWeighIn}>
@@ -6232,6 +6249,14 @@ const headerStats = useMemo(() => {
                                   >
                                     Use this split
                                   </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-xl"
+                                    onClick={() => deleteSavedSplit(key)}
+                                  >
+                                    Delete split
+                                  </Button>
                                 </div>
                               </div>
                             );
@@ -7019,7 +7044,7 @@ function BigMetricSlider({
   step,
   suffix,
   compact = false,
-  tickOffset = 10,
+  tickOffset = 0,
   tickEvery,
 }: {
   label: string;
@@ -7061,6 +7086,7 @@ function BigMetricSlider({
     backgroundImage: `repeating-linear-gradient(90deg, rgba(255,255,255,0.25) 0 1px, transparent 1px ${minorEvery}px), repeating-linear-gradient(90deg, rgba(255,255,255,0.6) 0 3px, transparent 3px ${majorEvery}px)`,
   };
   const rulerWidth = (max - min) * pxPerUnit + 1200;
+  const baseOffset = min * pxPerUnit;
 
   const setFromClientX = useCallback(
     (clientX: number, ts?: number) => {
@@ -7150,7 +7176,7 @@ function BigMetricSlider({
             width: rulerWidth,
             left: `calc(50% - ${rulerWidth / 2}px)`,
           }}
-          animate={{ x: `calc(${-sliderValue * pxPerUnit}px + ${tickOffset}px)` }}
+          animate={{ x: `calc(${-sliderValue * pxPerUnit}px + ${baseOffset + tickOffset}px)` }}
           transition={{ type: "spring", stiffness: 90, damping: 18, mass: 0.9 }}
         />
         <div className="absolute inset-y-0 left-1/2 w-[2px] bg-foreground/80 pointer-events-none" />
@@ -8954,8 +8980,12 @@ function OnboardingScreen({
                           <Button
                             key={day.key}
                             type="button"
-                            variant={active ? "default" : "outline"}
-                            className="rounded-full text-xs uppercase tracking-[0.25em]"
+                            variant="outline"
+                            className={`rounded-full text-xs uppercase tracking-[0.25em] ${
+                              active
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-background/70 text-foreground border-border"
+                            }`}
                             onClick={() => toggleDay(day.key)}
                           >
                             {day.short}
@@ -9738,18 +9768,25 @@ function ProgramGeneratorDialog({
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {WEEKDAYS.map((day) => (
-                  <Button
-                    key={day.key}
-                    type="button"
-                    size="sm"
-                    variant={scheduledDays.includes(day.key) ? "secondary" : "outline"}
-                    className="rounded-xl"
-                    onClick={() => toggleDay(scheduledDays, setScheduledDays, day.key)}
-                  >
-                    {day.short}
-                  </Button>
-                ))}
+                {WEEKDAYS.map((day) => {
+                  const active = scheduledDays.includes(day.key);
+                  return (
+                    <Button
+                      key={day.key}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className={`rounded-xl ${
+                        active
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background/70 text-foreground border-border"
+                      }`}
+                      onClick={() => toggleDay(scheduledDays, setScheduledDays, day.key)}
+                    >
+                      {day.short}
+                    </Button>
+                  );
+                })}
               </div>
             </div>
 

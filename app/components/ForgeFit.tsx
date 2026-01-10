@@ -4357,7 +4357,7 @@ const headerStats = useMemo(() => {
       ((gymStepIndex + 1) / Math.max(gymSteps.length, 1)) * 100
     );
     return (
-      <div className="min-h-screen h-screen w-full bg-background text-foreground overflow-hidden">
+      <div className="min-h-screen h-[100svh] w-full bg-background text-foreground overflow-hidden">
         <div className="pointer-events-none fixed inset-0 -z-10">
           <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_0%_0%,var(--glow-a),transparent)]" />
           <div className="absolute inset-0 bg-[radial-gradient(70%_55%_at_90%_10%,var(--glow-b),transparent)]" />
@@ -4371,13 +4371,13 @@ const headerStats = useMemo(() => {
           />
         </div>
 
-        <div className="relative z-10 mx-auto flex h-full max-w-md flex-col px-4 py-4">
+        <div className="relative z-10 mx-auto flex h-full max-w-md flex-col px-3 py-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
                 Workout Mode
               </div>
-              <div className="text-2xl font-display uppercase leading-tight">{workoutName}</div>
+              <div className="text-xl font-display uppercase leading-tight">{workoutName}</div>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -4403,12 +4403,12 @@ const headerStats = useMemo(() => {
               </Button>
             </div>
           </div>
-          <div className="mt-3">
+          <div className="mt-2">
             <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
               <span>Session progress</span>
               <span>{sessionProgressPct}%</span>
             </div>
-            <div className="mt-1 h-2 rounded-full bg-muted/60">
+            <div className="mt-1 h-1.5 rounded-full bg-muted/60">
               <div
                 className="h-full rounded-full bg-primary transition-all"
                 style={{ width: `${sessionProgressPct}%` }}
@@ -4422,7 +4422,7 @@ const headerStats = useMemo(() => {
             </div>
           </div>
 
-          <div className="mt-4 flex-1 min-h-0 flex flex-col gap-2">
+          <div className="mt-2 flex-1 min-h-0 flex flex-col gap-2">
             <div className="rounded-2xl border border-primary/40 bg-gradient-to-br from-primary/10 via-card/80 to-card/60 p-3 shadow-[0_14px_30px_rgba(0,0,0,0.22)]">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -4430,7 +4430,7 @@ const headerStats = useMemo(() => {
                     Current set
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <div className="text-2xl font-display uppercase">
+                    <div className="text-lg font-display uppercase">
                       {currentGymEntry?.exerciseName || "Pick a workout"}
                     </div>
                     {currentGymEntry?.templateHint?.defaultSets ? (
@@ -4444,7 +4444,7 @@ const headerStats = useMemo(() => {
                     ) : null}
                   </div>
                   {currentGymEntry?.templateHint ? (
-                    <div className="text-sm text-muted-foreground mt-1">
+                    <div className="text-xs text-muted-foreground mt-1">
                       Target {formatRepRange(currentGymEntry.templateHint.repRange)}{" "}
                       {currentGymEntry.templateHint.timeUnit === "seconds"
                         ? "sec"
@@ -4530,11 +4530,11 @@ const headerStats = useMemo(() => {
                 <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                   Rest timer
                 </div>
-                <div className="mt-2 text-4xl font-display">
+                <div className="mt-2 text-3xl font-display">
                   {String(Math.floor(restSeconds / 60)).padStart(2, "0")}:
                   {String(restSeconds % 60).padStart(2, "0")}
                 </div>
-                <div className="mt-2 h-2 rounded-full bg-muted/60">
+                <div className="mt-2 h-1.5 rounded-full bg-muted/60">
                   <div
                     className="h-full rounded-full bg-primary transition-all"
                     style={{
@@ -4638,6 +4638,8 @@ const headerStats = useMemo(() => {
                           { label: "+15", delta: 15 },
                           { label: "+20", delta: 20 },
                         ])}
+                    size="md"
+                    compact
                   />
                 )}
                 {currentGymEntry?.templateHint?.timeUnit ? null : (
@@ -4657,6 +4659,7 @@ const headerStats = useMemo(() => {
                         { label: "-1", delta: -1 },
                       ]}
                       size="md"
+                      compact
                     />
                     <MetricStepper
                       label="RPE"
@@ -4673,6 +4676,7 @@ const headerStats = useMemo(() => {
                       ]}
                       helperText="10 = max, 8 = ~2 reps left"
                       size="md"
+                      compact
                     />
                   </div>
                 )}
@@ -4729,13 +4733,13 @@ const headerStats = useMemo(() => {
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
-                  className="rounded-2xl h-9 px-4 text-sm"
+                  className="rounded-2xl h-8 px-3 text-xs"
                   onClick={() => setGymStepIndex((i) => Math.max(0, i - 1))}
                 >
                   Prev
                 </Button>
                 <Button
-                  className="rounded-2xl flex-1 h-10 text-sm"
+                  className="rounded-2xl flex-1 h-9 text-xs"
                   onClick={() => {
                     const restFromTemplate = currentGymEntry?.templateHint?.restSec ?? 0;
                     const nextRest = restPresetSec || restFromTemplate || 0;
@@ -4757,7 +4761,7 @@ const headerStats = useMemo(() => {
                 </Button>
                 <Button
                   variant="outline"
-                  className="rounded-2xl h-9 px-4 text-sm"
+                  className="rounded-2xl h-8 px-3 text-xs"
                   onClick={addGymSet}
                 >
                   Add set
@@ -5311,7 +5315,7 @@ const headerStats = useMemo(() => {
                       <ClipboardList className="h-5 w-5" /> Today’s workout
                     </CardTitle>
                     <CardDescription>
-                      {scheduleInfo.templateName || "No workout scheduled yet."}
+                      {scheduleInfo.templateName ? "Scheduled for today" : "No workout scheduled yet."}
                     </CardDescription>
                   </CardHeader>
                 <CardContent className="space-y-3">
@@ -5331,9 +5335,19 @@ const headerStats = useMemo(() => {
                           </span>
                         )}
                       </div>
-                      <div className="rounded-2xl border border-foreground/10 bg-background/70 p-3">
-                        <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
-                          Today&apos;s workout
+                      <div className="rounded-2xl border border-primary/30 bg-primary/5 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                            Today&apos;s workout
+                          </div>
+                          {scheduleInfo.templateName ? (
+                            <span className="rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-foreground">
+                              {scheduleInfo.templateName}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-3 text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
+                          Switch workout
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           <Button
@@ -5479,6 +5493,96 @@ const headerStats = useMemo(() => {
                     </CardContent>
                   </Card>
                 </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                    <Flame className="h-5 w-5" /> Daily weigh-in
+                  </CardTitle>
+                  <CardDescription>Track weight to see weekly trends.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {todaysWeighIn && !weighInEditing ? (
+                    <div className="rounded-2xl border border-foreground/10 bg-background/60 px-4 py-3">
+                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                        Today&apos;s weigh-in
+                      </div>
+                      <div className="mt-2 text-3xl font-display">
+                        {todaysWeighIn.weight} {state.settings.units}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-3 rounded-xl"
+                        onClick={() => {
+                          setWeighInInput(String(todaysWeighIn.weight));
+                          setWeighInEditing(true);
+                        }}
+                      >
+                        Edit weigh-in
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <MetricStepper
+                        label="Weight"
+                        value={weighInSliderValue}
+                        min={weighInRange.min}
+                        max={weighInRange.max}
+                        step={weighInRange.step}
+                        unit={state.settings.units}
+                        onChange={(v) => setWeighInInput(String(v))}
+                        quickValues={weighInQuickValues}
+                        quickAdjust={[
+                          { label: "+0.5", delta: 0.5 },
+                          { label: "+1", delta: 1 },
+                          { label: "+2", delta: 2 },
+                          { label: "-0.5", delta: -0.5 },
+                        ]}
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button className="rounded-xl flex-1" onClick={saveWeighIn}>
+                          Save weigh-in
+                        </Button>
+                        {todaysWeighIn ? (
+                          <Button
+                            variant="outline"
+                            className="rounded-xl"
+                            onClick={() => setWeighInEditing(false)}
+                          >
+                            Cancel
+                          </Button>
+                        ) : null}
+                      </div>
+                    </>
+                  )}
+                  <WeightTrendGraph
+                    points={(state.weighIns || []).slice(0, 14)}
+                    units={state.settings.units}
+                  />
+                  <div className="text-xs text-muted-foreground">{energyLabel}</div>
+                  <motion.div variants={listMotion} className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {recentWeighIns.length === 0 ? (
+                      <div className="text-sm text-muted-foreground col-span-full">
+                        No weigh-ins yet.
+                      </div>
+                    ) : (
+                      recentWeighIns.map((w) => (
+                        <motion.div key={w.dateISO} variants={listItemMotion} className="rounded-xl border p-2">
+                          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                            {formatDate(w.dateISO)}
+                          </div>
+                          <div className="text-lg font-display">
+                            {w.weight} {state.settings.units}
+                          </div>
+                        </motion.div>
+                      ))
+                    )}
+                  </motion.div>
+                </CardContent>
+                  </Card>
+                </motion.div>
               </motion.div>
             </TabsContent>
 
@@ -5487,7 +5591,7 @@ const headerStats = useMemo(() => {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
-                      Workouts
+                      Training
                     </div>
                     <div className="text-3xl font-display uppercase">Training</div>
                   </div>
@@ -5500,7 +5604,7 @@ const headerStats = useMemo(() => {
                   <Card className="rounded-2xl shadow-md card-glass">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <ClipboardList className="h-5 w-5" /> Selected workouts
+                        <ClipboardList className="h-5 w-5" /> Selected workout
                       </CardTitle>
                       <CardDescription>Your active split and current day.</CardDescription>
                     </CardHeader>
@@ -5639,414 +5743,76 @@ const headerStats = useMemo(() => {
                       </CardTitle>
                       <CardDescription>Build workouts, create splits, and manage templates.</CardDescription>
                     </CardHeader>
-                    <CardContent className="flex flex-wrap gap-2">
-                      <Button className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
-                        Manage templates
-                      </Button>
-                      <Button variant="outline" className="rounded-xl" onClick={() => setGeneratorOpen(true)}>
-                        Generate workouts
-                      </Button>
-                      <Button variant="outline" className="rounded-xl" onClick={() => setImportDialogOpen(true)}>
-                        Import data
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                {!isCoach ? (
-                  <motion.div variants={cardMotion}>
-                    <Card className="rounded-2xl shadow-md card-glass">
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <Sparkles className="h-5 w-5" /> Coach access
-                        </CardTitle>
-                        <CardDescription>
-                          Connect to your coach and import assigned programs.
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="space-y-2">
-                          <Label>Coach email</Label>
-                          <div className="flex flex-col sm:flex-row gap-2">
-                            <Input
-                              value={coachLinkEmail}
-                              onChange={(e) => setCoachLinkEmail(e.target.value)}
-                              placeholder="coach@email.com"
-                            />
-                            <Button
-                              className="rounded-xl"
-                              onClick={async () => {
-                                if (!supabase || !authUser) return;
-                                const email = coachLinkEmail.trim();
-                                if (!email) return;
-                                const coachRes = await supabase
-                                  .from("profiles")
-                                  .select("user_id, role")
-                                  .eq("email", email)
-                                  .single();
-                                if (coachRes.error || coachRes.data?.role !== "coach") {
-                                  alert("Coach not found.");
-                                  return;
-                                }
-                                await supabase.from("coach_clients").insert({
-                                  coach_id: coachRes.data.user_id,
-                                  athlete_id: authUser.id,
-                                  athlete_email: authUser.email,
-                                });
-                                alert("Coach linked. Ask them to assign your program.");
-                                setCoachLinkEmail("");
-                              }}
-                            >
-                              Connect
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="rounded-xl border p-3 space-y-2">
-                          <div className="text-sm font-medium">Coach assignments</div>
-                          {athleteAssignments.length ? (
-                            <div className="space-y-2">
-                              {athleteAssignments.map((item) => (
-                                <div key={item.id} className="flex items-center justify-between text-sm">
-                                  <span className="font-medium">{item.template.name}</span>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="rounded-xl"
-                                    onClick={() => {
-                                      const freshTemplate: Template = {
-                                        ...item.template,
-                                        id: uid(),
-                                        exercises: (item.template.exercises || []).map((ex) => ({
-                                          ...ex,
-                                          id: uid(),
-                                        })),
-                                        source: "coach",
-                                      };
-                                      setState((p) => ({
-                                        ...p,
-                                        templates: [freshTemplate, ...p.templates],
-                                      }));
-                                      setSelectedTemplateId(freshTemplate.id);
-                                      alert("Template added to your library.");
-                                    }}
-                                  >
-                                    Add
-                                  </Button>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-xs text-muted-foreground">
-                              No assignments yet.
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ) : null}
-
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-edge">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <Sparkles className="h-5 w-5" /> Smart Trainer notes
-                      </CardTitle>
-                      <CardDescription>
-                        Daily coaching cues. Add your focus points and reminders for this session.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <textarea
-                        className="w-full min-h-[96px] rounded-xl border border-border/70 bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                        placeholder="Smart Trainer cues for today..."
-                        value={state.settings.profile.coachNotes || ""}
-                        onChange={(e) =>
-                          setState((p) => ({
-                            ...p,
-                            settings: {
-                              ...p.settings,
-                              profile: { ...p.settings.profile, coachNotes: e.target.value },
-                            },
-                          }))
-                        }
-                      />
-                      <div className="text-xs text-muted-foreground">
-                        Example: tempo cues, focus muscles, or form reminders for today.
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-edge">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <Sparkles className="h-5 w-5" /> Smart Trainer suggestions
-                      </CardTitle>
-                      <CardDescription>
-                        Accept or skip. Suggestions auto-adjust based on your last sessions.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {Object.keys(insights.suggestions).length === 0 ? (
-                        <div className="text-sm text-muted-foreground">
-                          Log a few workouts with top sets to unlock suggestions.
-                        </div>
-                      ) : (
-                        <motion.div variants={listMotion} className="space-y-2">
-                          {Object.entries(insights.suggestions).slice(0, 8).map(([name, s]) => (
-                            <motion.div key={name} variants={listItemMotion} className="rounded-2xl border p-3">
-                              <div className="font-medium">{name}</div>
-                              <div className="text-sm text-muted-foreground mt-1">
-                                Next: {s.next.weight}
-                                {state.settings.units} × {s.next.reps}
-                              </div>
-                              <div className="text-xs text-muted-foreground mt-1">{s.reason}</div>
-                            </motion.div>
-                          ))}
-                        </motion.div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-glass">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                    <Flame className="h-5 w-5" /> Daily weigh-in
-                  </CardTitle>
-                  <CardDescription>Track weight to see weekly trends.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {todaysWeighIn && !weighInEditing ? (
-                    <div className="rounded-2xl border border-foreground/10 bg-background/60 px-4 py-3">
-                      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                        Today&apos;s weigh-in
-                      </div>
-                      <div className="mt-2 text-3xl font-display">
-                        {todaysWeighIn.weight} {state.settings.units}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="mt-3 rounded-xl"
-                        onClick={() => {
-                          setWeighInInput(String(todaysWeighIn.weight));
-                          setWeighInEditing(true);
-                        }}
-                      >
-                        Edit weigh-in
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      <MetricStepper
-                        label="Weight"
-                        value={weighInSliderValue}
-                        min={weighInRange.min}
-                        max={weighInRange.max}
-                        step={weighInRange.step}
-                        unit={state.settings.units}
-                        onChange={(v) => setWeighInInput(String(v))}
-                        quickValues={weighInQuickValues}
-                        quickAdjust={[
-                          { label: "+0.5", delta: 0.5 },
-                          { label: "+1", delta: 1 },
-                          { label: "+2", delta: 2 },
-                          { label: "-0.5", delta: -0.5 },
-                        ]}
-                      />
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button className="rounded-xl flex-1" onClick={saveWeighIn}>
-                          Save weigh-in
+                    <CardContent className="space-y-4">
+                      <div className="flex flex-wrap gap-2">
+                        <Button className="rounded-xl" onClick={() => setTemplateDialogOpen(true)}>
+                          Manage templates
                         </Button>
-                        {todaysWeighIn ? (
-                          <Button
-                            variant="outline"
-                            className="rounded-xl"
-                            onClick={() => setWeighInEditing(false)}
-                          >
-                            Cancel
-                          </Button>
-                        ) : null}
+                        <Button variant="outline" className="rounded-xl" onClick={() => setGeneratorOpen(true)}>
+                          Generate workouts
+                        </Button>
+                        <Button variant="outline" className="rounded-xl" onClick={() => setImportDialogOpen(true)}>
+                          Import data
+                        </Button>
                       </div>
-                    </>
-                  )}
-                  <WeightTrendGraph
-                    points={(state.weighIns || []).slice(0, 14)}
-                    units={state.settings.units}
-                  />
-                  <div className="text-xs text-muted-foreground">{energyLabel}</div>
-                  <motion.div variants={listMotion} className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    {recentWeighIns.length === 0 ? (
-                      <div className="text-sm text-muted-foreground col-span-full">
-                        No weigh-ins yet.
-                      </div>
-                    ) : (
-                      recentWeighIns.map((w) => (
-                        <motion.div key={w.dateISO} variants={listItemMotion} className="rounded-xl border p-2">
-                          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                            {formatDate(w.dateISO)}
-                          </div>
-                          <div className="text-lg font-display">
-                            {w.weight} {state.settings.units}
-                          </div>
-                        </motion.div>
-                      ))
-                    )}
-                  </motion.div>
-                </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-edge">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                      <Target className="h-5 w-5" /> Goals
-                    </CardTitle>
-                    <CardDescription>Today’s focus and weekly targets.</CardDescription>
-                  </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Button className="rounded-xl" onClick={() => setGoalDialogOpen(true)}>
-                      <Plus className="h-4 w-4 mr-2" /> Add goal
-                    </Button>
-                    <Button variant="outline" className="rounded-xl" onClick={applyAutoGoals}>
-                      Auto goals
-                    </Button>
-                  </div>
-                  <GoalsPanel
-                    goals={state.goals}
-                    history={exerciseHistory}
-                    units={state.settings.units}
-                    onDone={markGoalDone}
-                    onArchive={archiveGoal}
-                  />
-                </CardContent>
-                </Card>
-                </motion.div>
-
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-glass">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                    <TrendingUp className="h-5 w-5" /> Progress
-                  </CardTitle>
-                  <CardDescription>Session completion and momentum.</CardDescription>
-                </CardHeader>
-                <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div className="rounded-xl border p-3">
-                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                      Planned sets
-                    </div>
-                    <div className="text-2xl font-display">{sessionProgress.planned}</div>
-                  </div>
-                  <div className="rounded-xl border p-3">
-                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                      Completed sets
-                    </div>
-                    <div className="text-2xl font-display">{sessionProgress.completed}</div>
-                  </div>
-                  <div className="rounded-xl border p-3">
-                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                      Session progress
-                    </div>
-                    <div className="text-2xl font-display">{sessionProgress.pct}%</div>
-                  </div>
-                </CardContent>
-                </Card>
-                </motion.div>
-
-                <motion.div variants={cardMotion}>
-                  <Card className="rounded-2xl shadow-md card-glass">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <Trophy className="h-5 w-5" /> Trophies
-                      </CardTitle>
-                      <CardDescription>Celebrate milestones and gym wins.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="text-muted-foreground">
-                          Unlocked {unlockedCount}/{ACHIEVEMENTS.length}
+                      <div className="rounded-2xl border border-foreground/10 bg-background/70 p-3 space-y-3">
+                        <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                          Create your own split
                         </div>
-                        {latestAchievement ? (
-                          <div className="text-xs text-muted-foreground">
-                            Latest: {latestAchievement.title}
-                          </div>
-                        ) : null}
-                      </div>
-                      <motion.div
-                        variants={listMotion}
-                        className="grid grid-cols-1 sm:grid-cols-3 gap-2"
-                      >
-                        {achievementsList
-                          .slice()
-                          .sort((a, b) => Number(!!b.unlockedAt) - Number(!!a.unlockedAt))
-                          .slice(0, 3)
-                          .map((a) => {
-                            const Icon = a.icon;
-                            return (
-                              <motion.div
-                                key={a.id}
-                                variants={listItemMotion}
-                                className={`rounded-xl border p-3 ${
-                                  a.unlockedAt ? "" : "opacity-60"
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                                  <Icon className="h-4 w-4" />
-                                  {a.unlockedAt ? "Unlocked" : "Locked"}
-                                </div>
-                                <div className="mt-1 font-medium">{a.title}</div>
-                                <div className="text-xs text-muted-foreground">{a.description}</div>
-                              </motion.div>
-                            );
-                          })}
-                      </motion.div>
-                      <div className="text-xs text-muted-foreground">
-                        Unlock trophies by hitting PRs, stacking volume, and staying consistent.
+                        <Input
+                          value={customSplitName}
+                          onChange={(e) => setCustomSplitName(e.target.value)}
+                          placeholder="Split name (e.g., Lift & Sculpt)"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          {WEEKDAYS.map((day) => (
+                            <Button
+                              key={day.key}
+                              type="button"
+                              size="sm"
+                              variant={customSplitDays.includes(day.key) ? "secondary" : "outline"}
+                              className="rounded-xl"
+                              onClick={() => toggleCustomSplitDay(day.key)}
+                            >
+                              {day.short}
+                            </Button>
+                          ))}
+                        </div>
+                        <Button
+                          className="rounded-xl w-full"
+                          onClick={() => {
+                            if (!customSplitDays.length) {
+                              alert("Pick at least one day first.");
+                              return;
+                            }
+                            const name = customSplitName.trim() || "My Split";
+                            const splitKey = `custom|${name}|${customSplitDays.join("-") || "days"}`;
+                            const templates = customSplitDays.map((day, idx) => {
+                              const label =
+                                WEEKDAYS.find((d) => d.key === day)?.label || `Day ${idx + 1}`;
+                              return {
+                                id: uid(),
+                                name: `${name} • ${label}`,
+                                exercises: [],
+                              } as Template;
+                            });
+                            replaceProgramTemplates(templates, customSplitDays, splitKey, "custom_split");
+                            setSplitWizard({
+                              title: name,
+                              templateIds: templates.map((t) => t.id),
+                            });
+                          }}
+                        >
+                          Create custom split
+                        </Button>
+                        <div className="text-xs text-muted-foreground">
+                          Your split is saved locally. You can switch back anytime.
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
                 </motion.div>
 
-                {state.settings.powerliftingMode ? (
-                  <motion.div variants={cardMotion}>
-                    <Card className="rounded-2xl shadow-md card-glass">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
-                        <Dumbbell className="h-5 w-5" /> Big 3 1RM
-                      </CardTitle>
-                      <CardDescription>Powerlifter snapshot for the week.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {(
-                        [
-                          ["Squat", big3Stats.squat],
-                          ["Bench", big3Stats.bench],
-                          ["Deadlift", big3Stats.deadlift],
-                        ] as Array<[string, { name: string; value: number; date: string } | null]>
-                      ).map(([label, data]) => (
-                        <div key={label} className="rounded-xl border p-3">
-                          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                            {label}
-                          </div>
-                          <div className="text-2xl font-display">
-                            {data ? Math.round(data.value).toLocaleString() : "—"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {data ? `${formatDate(data.date)} • ${data.name}` : "Log a top set"}
-                          </div>
-                        </div>
-                      ))}
-                    </CardContent>
-                    </Card>
-                  </motion.div>
-                ) : null}
               </motion.div>
             </TabsContent>
 
@@ -6814,6 +6580,215 @@ const headerStats = useMemo(() => {
                     </CardContent>
                   </Card>
                 </motion.div>
+
+                {!isCoach ? (
+                  <motion.div variants={cardMotion}>
+                    <Card className="rounded-2xl shadow-md card-glass">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Sparkles className="h-5 w-5" /> Coach access
+                        </CardTitle>
+                        <CardDescription>
+                          Connect to your coach and import assigned programs.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="space-y-2">
+                          <Label>Coach email</Label>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <Input
+                              value={coachLinkEmail}
+                              onChange={(e) => setCoachLinkEmail(e.target.value)}
+                              placeholder="coach@email.com"
+                            />
+                            <Button
+                              className="rounded-xl"
+                              onClick={async () => {
+                                if (!supabase || !authUser) return;
+                                const email = coachLinkEmail.trim();
+                                if (!email) return;
+                                const coachRes = await supabase
+                                  .from("profiles")
+                                  .select("user_id, role")
+                                  .eq("email", email)
+                                  .single();
+                                if (coachRes.error || coachRes.data?.role !== "coach") {
+                                  alert("Coach not found.");
+                                  return;
+                                }
+                                await supabase.from("coach_clients").insert({
+                                  coach_id: coachRes.data.user_id,
+                                  athlete_id: authUser.id,
+                                  athlete_email: authUser.email,
+                                });
+                                alert("Coach linked. Ask them to assign your program.");
+                                setCoachLinkEmail("");
+                              }}
+                            >
+                              Connect
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="rounded-xl border p-3 space-y-2">
+                          <div className="text-sm font-medium">Coach assignments</div>
+                          {athleteAssignments.length ? (
+                            <div className="space-y-2">
+                              {athleteAssignments.map((item) => (
+                                <div key={item.id} className="flex items-center justify-between text-sm">
+                                  <span className="font-medium">{item.template.name}</span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-xl"
+                                    onClick={() => {
+                                      const freshTemplate: Template = {
+                                        ...item.template,
+                                        id: uid(),
+                                        exercises: (item.template.exercises || []).map((ex) => ({
+                                          ...ex,
+                                          id: uid(),
+                                        })),
+                                        source: "coach",
+                                      };
+                                      setState((p) => ({
+                                        ...p,
+                                        templates: [freshTemplate, ...p.templates],
+                                      }));
+                                      setSelectedTemplateId(freshTemplate.id);
+                                      alert("Template added to your library.");
+                                    }}
+                                  >
+                                    Add
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">
+                              No assignments yet.
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ) : null}
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-edge">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                      <Target className="h-5 w-5" /> Goals
+                    </CardTitle>
+                    <CardDescription>Your focus and weekly targets.</CardDescription>
+                  </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Button className="rounded-xl" onClick={() => setGoalDialogOpen(true)}>
+                      <Plus className="h-4 w-4 mr-2" /> Add goal
+                    </Button>
+                    <Button variant="outline" className="rounded-xl" onClick={applyAutoGoals}>
+                      Auto goals
+                    </Button>
+                  </div>
+                  <GoalsPanel
+                    goals={state.goals}
+                    history={exerciseHistory}
+                    units={state.settings.units}
+                    onDone={markGoalDone}
+                    onArchive={archiveGoal}
+                  />
+                </CardContent>
+                </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-2xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Trophy className="h-5 w-5" /> Trophies
+                      </CardTitle>
+                      <CardDescription>Celebrate milestones and gym wins.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="text-muted-foreground">
+                          Unlocked {unlockedCount}/{ACHIEVEMENTS.length}
+                        </div>
+                        {latestAchievement ? (
+                          <div className="text-xs text-muted-foreground">
+                            Latest: {latestAchievement.title}
+                          </div>
+                        ) : null}
+                      </div>
+                      <motion.div
+                        variants={listMotion}
+                        className="grid grid-cols-1 sm:grid-cols-3 gap-2"
+                      >
+                        {achievementsList
+                          .slice()
+                          .sort((a, b) => Number(!!b.unlockedAt) - Number(!!a.unlockedAt))
+                          .slice(0, 3)
+                          .map((a) => {
+                            const Icon = a.icon;
+                            return (
+                              <motion.div
+                                key={a.id}
+                                variants={listItemMotion}
+                                className={`rounded-xl border p-3 ${
+                                  a.unlockedAt ? "" : "opacity-60"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                                  <Icon className="h-4 w-4" />
+                                  {a.unlockedAt ? "Unlocked" : "Locked"}
+                                </div>
+                                <div className="mt-1 font-medium">{a.title}</div>
+                                <div className="text-xs text-muted-foreground">{a.description}</div>
+                              </motion.div>
+                            );
+                          })}
+                      </motion.div>
+                      <div className="text-xs text-muted-foreground">
+                        Unlock trophies by hitting PRs, stacking volume, and staying consistent.
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {state.settings.powerliftingMode ? (
+                  <motion.div variants={cardMotion}>
+                    <Card className="rounded-2xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Dumbbell className="h-5 w-5" /> Big 3 1RM
+                      </CardTitle>
+                      <CardDescription>Visible on your profile when sharing.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {(
+                        [
+                          ["Squat", big3Stats.squat],
+                          ["Bench", big3Stats.bench],
+                          ["Deadlift", big3Stats.deadlift],
+                        ] as Array<[string, { name: string; value: number; date: string } | null]>
+                      ).map(([label, data]) => (
+                        <div key={label} className="rounded-xl border p-3">
+                          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                            {label}
+                          </div>
+                          <div className="text-2xl font-display">
+                            {data ? Math.round(data.value).toLocaleString() : "—"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {data ? `${formatDate(data.date)} • ${data.name}` : "Log a top set"}
+                          </div>
+                        </div>
+                      ))}
+                    </CardContent>
+                    </Card>
+                  </motion.div>
+                ) : null}
               </motion.div>
             </TabsContent>
             ) : null}
@@ -7153,7 +7128,7 @@ const headerStats = useMemo(() => {
               onClick={() => setActiveTab("workouts")}
             >
               <ClipboardList className="h-5 w-5" />
-              Workouts
+              Training
             </button>
             <button
               type="button"
@@ -7575,6 +7550,7 @@ function MetricStepper({
   quickValues = [],
   helperText,
   size = "lg",
+  compact = false,
 }: {
   label: string;
   value: number;
@@ -7588,6 +7564,7 @@ function MetricStepper({
   quickValues?: number[];
   helperText?: string;
   size?: "lg" | "md";
+  compact?: boolean;
 }) {
   const clamped = clamp(roundTo(value || min, step), min, max);
   const formatValue = (n: number) =>
@@ -7602,7 +7579,11 @@ function MetricStepper({
   );
 
   return (
-    <div className="rounded-[28px] border border-foreground/10 bg-card/80 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+    <div
+      className={`border border-foreground/10 bg-card/80 shadow-[0_18px_50px_rgba(0,0,0,0.22)] ${
+        compact ? "rounded-2xl p-3" : "rounded-[28px] p-5"
+      }`}
+    >
       <div className="flex items-center justify-between">
         <div className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground">
           {label}
@@ -7615,13 +7596,13 @@ function MetricStepper({
       </div>
       <div
         className={`mt-3 flex items-center justify-between gap-3 ${
-          size === "lg" ? "min-h-[80px]" : "min-h-[64px]"
+          compact ? "min-h-[56px]" : size === "lg" ? "min-h-[80px]" : "min-h-[64px]"
         }`}
       >
         <button
           type="button"
-          className={`flex h-14 w-14 items-center justify-center rounded-2xl border border-foreground/10 bg-background/70 text-2xl font-display ${
-            size === "lg" ? "" : "h-12 w-12"
+          className={`flex items-center justify-center rounded-2xl border border-foreground/10 bg-background/70 font-display ${
+            compact ? "h-10 w-10 text-xl" : size === "lg" ? "h-14 w-14 text-2xl" : "h-12 w-12 text-2xl"
           }`}
           onClick={() => applyValue(clamped - step)}
         >
@@ -7630,7 +7611,7 @@ function MetricStepper({
         <div className="flex-1 text-center">
           <div
             className={`font-display text-foreground ${
-              size === "lg" ? "text-4xl" : "text-3xl"
+              compact ? "text-2xl" : size === "lg" ? "text-4xl" : "text-3xl"
             }`}
           >
             {display}
@@ -7643,8 +7624,8 @@ function MetricStepper({
         </div>
         <button
           type="button"
-          className={`flex h-14 w-14 items-center justify-center rounded-2xl border border-foreground/10 bg-background/70 text-2xl font-display ${
-            size === "lg" ? "" : "h-12 w-12"
+          className={`flex items-center justify-center rounded-2xl border border-foreground/10 bg-background/70 font-display ${
+            compact ? "h-10 w-10 text-xl" : size === "lg" ? "h-14 w-14 text-2xl" : "h-12 w-12 text-2xl"
           }`}
           onClick={() => applyValue(clamped + step)}
         >
@@ -7653,7 +7634,7 @@ function MetricStepper({
       </div>
 
       {uniqueQuick.length ? (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className={`flex flex-wrap items-center gap-2 ${compact ? "mt-1.5" : "mt-2"}`}>
           <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
             Quick set
           </div>
@@ -7662,7 +7643,7 @@ function MetricStepper({
               key={`preset-${preset}`}
               size="sm"
               variant="outline"
-              className="rounded-full px-3 text-[11px]"
+              className={`rounded-full px-3 text-[11px] ${compact ? "h-6" : ""}`}
               onClick={() => applyValue(preset)}
             >
               {formatValue(preset)}
@@ -7672,7 +7653,7 @@ function MetricStepper({
       ) : null}
 
       {quickAdjust.length ? (
-        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <div className={`flex flex-wrap items-center gap-2 ${compact ? "mt-1" : "mt-1.5"}`}>
           <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
             Quick adjust
           </div>
@@ -7681,7 +7662,7 @@ function MetricStepper({
               key={adj.label}
               size="sm"
               variant="secondary"
-              className="rounded-full px-3 text-[11px]"
+              className={`rounded-full px-3 text-[11px] ${compact ? "h-6" : ""}`}
               onClick={() => applyValue(clamped + adj.delta)}
             >
               {adj.label}

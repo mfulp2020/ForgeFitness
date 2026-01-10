@@ -6462,6 +6462,11 @@ const headerStats = useMemo(() => {
             {!simpleMode ? (
             <TabsContent value="profile" className="mt-0">
               <motion.div variants={pageMotion} initial="hidden" animate="show" className="space-y-4">
+                <div>
+                  <Button variant="outline" className="rounded-2xl" onClick={() => setActiveTab("social")}>
+                    Back to Social
+                  </Button>
+                </div>
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-3xl shadow-lg card-hero overflow-hidden">
                     <CardContent className="p-6">

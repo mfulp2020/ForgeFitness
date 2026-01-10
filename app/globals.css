@@ -47,6 +47,10 @@
 
 :root {
   --radius: 0.9rem;
+  --font-body: "Sora", "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica,
+    Arial, system-ui, sans-serif;
+  --font-display: "Black Ops One", "Impact", "Haettenschweiler",
+    "Arial Black", "Franklin Gothic Medium", system-ui, sans-serif;
 
   --background: oklch(0.985 0.01 80);
   --foreground: oklch(0.18 0.02 30);

@@ -6468,7 +6468,7 @@ const headerStats = useMemo(() => {
             <TabsContent value="profile" className="mt-0">
               <motion.div variants={pageMotion} initial="hidden" animate="show" className="space-y-4">
                 <div>
-                  <Button variant="outline" className="rounded-2xl" onClick={() => setActiveTab("social")}>
+                  <Button className="rounded-2xl" onClick={() => setActiveTab("social")}>
                     Back to Social
                   </Button>
                 </div>
@@ -6516,9 +6516,6 @@ const headerStats = useMemo(() => {
                           </label>
                           <Button className="rounded-2xl" onClick={() => setSettingsDialogOpen(true)}>
                             Edit profile
-                          </Button>
-                          <Button variant="outline" className="rounded-2xl" onClick={() => setActiveTab("social")}>
-                            View feed
                           </Button>
                         </div>
                       </div>

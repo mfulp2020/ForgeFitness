@@ -760,6 +760,11 @@ const formatRepRange = (range: RepRange) => {
   return range.min === range.max ? String(range.min) : `${range.min}–${range.max}`;
 };
 
+const getUsername = (record: any, fallback: string) => {
+  const resolved = Array.isArray(record) ? record[0] : record;
+  return resolved?.username || fallback;
+};
+
 const SUPERSET_TAGS = ["A", "B", "C", "D"];
 
 const getWeightSliderConfig = (units: Units) => {
@@ -2141,7 +2146,7 @@ useEffect(() => {
           (friendsRes.data || [])
             .map((f: any) => ({
               userId: f.friend_id,
-              username: f.friend?.username || "Athlete",
+              username: getUsername(f.friend, "Athlete"),
             }))
             .filter((f: any) => f.userId)
         );
@@ -2157,7 +2162,7 @@ useEffect(() => {
           (requestRes.data || []).map((r: any) => ({
             id: r.id,
             fromId: r.requester_id,
-            fromName: r.requester?.username || "Athlete",
+            fromName: getUsername(r.requester, "Athlete"),
           }))
         );
       }
@@ -2173,7 +2178,7 @@ useEffect(() => {
         if (!feedRes.error) {
           const mapped = (feedRes.data || []).map((p: any) => ({
             id: p.id,
-            actor: p.actor?.username || "Athlete",
+            actor: getUsername(p.actor, "Athlete"),
             type: p.type,
             payload: p.payload,
             createdAt: p.created_at,
@@ -2204,10 +2209,9 @@ useEffect(() => {
               for (const row of commentsRes.data || []) {
                 const key = row.post_id;
                 if (!commentMap[key]) commentMap[key] = [];
-                const authorRecord = Array.isArray(row.author) ? row.author[0] : row.author;
                 commentMap[key].push({
                   id: row.id,
-                  author: authorRecord?.username || "Athlete",
+                  author: getUsername(row.author, "Athlete"),
                   body: row.body,
                   createdAt: row.created_at,
                 });
@@ -2253,7 +2257,7 @@ useEffect(() => {
           (invitesRes.data || []).map((i: any) => ({
             id: i.id,
             fromId: i.sender_id,
-            fromName: i.sender?.username || "Athlete",
+            fromName: getUsername(i.sender, "Athlete"),
             template: i.template,
           }))
         );
@@ -2279,7 +2283,7 @@ useEffect(() => {
         setMessages(
           (res.data || []).map((m: any) => ({
             id: m.id,
-            from: m.sender?.username || "Athlete",
+            from: getUsername(m.sender, "Athlete"),
             body: m.body,
             createdAt: m.created_at,
           }))
@@ -3399,13 +3403,12 @@ useEffect(() => {
         .select("id, body, created_at, author:profiles(username)")
         .single();
       if (!res.error && res.data) {
-        const authorRecord = Array.isArray(res.data.author) ? res.data.author[0] : res.data.author;
         setPostComments((prev) => ({
           ...prev,
           [postId]: [
             {
               id: res.data.id,
-              author: authorRecord?.username || "You",
+              author: getUsername(res.data.author, "You"),
               body: res.data.body,
               createdAt: res.data.created_at,
             },
@@ -5858,7 +5861,7 @@ const headerStats = useMemo(() => {
                                 setMessages((prev) => [
                                   {
                                     id: res.data.id,
-                                    from: res.data.sender?.username || "You",
+                                    from: getUsername(res.data.sender, "You"),
                                     body: res.data.body,
                                     createdAt: res.data.created_at,
                                   },
@@ -6061,7 +6064,7 @@ const headerStats = useMemo(() => {
                                     }
                                     const leaderboard = ids.map((id) => {
                                       const friend = friends.find((f) => f.userId === id);
-                                      const name = id === authUser.id ? "You" : friend?.username || "Athlete";
+                                      const name = id === authUser.id ? "You" : getUsername(friend, "Athlete");
                                       return { username: name, score: scores[id] || 0 };
                                     });
                                     leaderboard.sort((a, b) => b.score - a.score);

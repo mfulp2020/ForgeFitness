@@ -2572,7 +2572,7 @@ useEffect(() => {
       setShowPRCelebration(true);
     }
     setRecapOpen(true);
-    if (supabaseEnabled && authUser) {
+    if (supabaseEnabled && authUser && supabase) {
       supabase
         .from("user_sessions")
         .upsert(

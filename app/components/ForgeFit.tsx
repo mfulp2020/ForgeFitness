@@ -8378,18 +8378,18 @@ function GetStartedScreen({ onStart }: { onStart: () => void }) {
             <div className="absolute inset-0 bg-gradient-to-r from-background via-background/85 to-background/20" />
             <div className="absolute inset-0 bg-black/30" />
           </div>
-          <div className="relative z-10 w-full max-w-2xl space-y-6 px-5 py-8">
+          <div className="relative z-10 w-full max-w-2xl space-y-5 px-5 py-7">
             <div className="inline-flex items-center gap-2 rounded-full border border-black/60 bg-white/80 px-5 py-2 text-sm font-bold uppercase tracking-[0.35em] text-black shadow-md">
               Forge Fitness • Iron Edition
             </div>
-            <div className="text-5xl md:text-6xl font-display uppercase tracking-[0.18em] text-black drop-shadow-[0_8px_22px_rgba(0,0,0,0.55)]">
+            <div className="text-5xl md:text-6xl font-display uppercase tracking-[0.18em] text-black drop-shadow-[0_8px_22px_rgba(0,0,0,0.55)] leading-[1.02]">
               Built in the forge. Earned in the gym.
             </div>
-            <div className="text-base font-bold text-black/90 leading-relaxed">
+            <div className="text-base font-bold text-black/90 leading-relaxed max-w-[46ch]">
               Forge Fitness is where strength gets built. Lock in your sessions, track every set,
               and shape a physique that lasts.
             </div>
-            <div className="space-y-2 text-sm">
+            <div className="space-y-2 text-base font-bold text-black/90">
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-primary" />
                 Dialed programs built for your goal.

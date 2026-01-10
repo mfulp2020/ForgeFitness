@@ -765,6 +765,13 @@ const getUsername = (record: any, fallback: string) => {
   return resolved?.username || fallback;
 };
 
+const sanitizeUsername = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9._]/g, "")
+    .slice(0, 24);
+
 const SUPERSET_TAGS = ["A", "B", "C", "D"];
 
 const getWeightSliderConfig = (units: Units) => {
@@ -3306,6 +3313,7 @@ useEffect(() => {
     const completed =
       nextProfile.completed ||
       (!!nextProfile.name.trim() &&
+        !!nextProfile.username?.trim() &&
         Number(nextProfile.age) > 0 &&
         Number(nextProfile.height) > 0 &&
         Number(nextProfile.weight) > 0 &&
@@ -3439,7 +3447,7 @@ useEffect(() => {
   );
 
   const acceptFriendRequest = useCallback(
-    async (requestId: string, fromId: string) => {
+    async (requestId: string, fromId: string, fromName: string) => {
       if (!supabase || !authUser) return;
       await supabase.from("friendships").insert([
         { user_id: authUser.id, friend_id: fromId },
@@ -3450,7 +3458,7 @@ useEffect(() => {
       setFriends((prev) =>
         prev.some((f) => f.userId === fromId)
           ? prev
-          : [...prev, { userId: fromId, username: "Athlete" }]
+          : [...prev, { userId: fromId, username: fromName || "Athlete" }]
       );
     },
     [authUser, supabase]
@@ -5800,7 +5808,7 @@ const headerStats = useMemo(() => {
                                   <Button
                                     size="sm"
                                     className="rounded-xl"
-                                    onClick={() => acceptFriendRequest(req.id, req.fromId)}
+                                    onClick={() => acceptFriendRequest(req.id, req.fromId, req.fromName)}
                                   >
                                     Accept
                                   </Button>
@@ -8556,6 +8564,10 @@ function OnboardingScreen({
       setError("Add your name to continue.");
       return;
     }
+    if (!profile.username?.trim()) {
+      setError("Pick a username to continue.");
+      return;
+    }
     if (!age || age < 10) {
       setError("Enter a valid age.");
       return;
@@ -8622,6 +8634,10 @@ function OnboardingScreen({
 
       if (!profile.name.trim()) {
         setError("Add your name to continue.");
+        return;
+      }
+      if (!profile.username?.trim()) {
+        setError("Pick a username to continue.");
         return;
       }
       if (!age || age < 10) {
@@ -8722,7 +8738,27 @@ function OnboardingScreen({
                       value={profile.name}
                       onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))}
                       placeholder="Your name"
+                      autoComplete="name"
                     />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Username</Label>
+                    <Input
+                      value={profile.username || ""}
+                      onChange={(e) =>
+                        setProfile((p) => ({
+                          ...p,
+                          username: sanitizeUsername(e.target.value),
+                        }))
+                      }
+                      placeholder="forgeathlete"
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                    />
+                    <div className="text-[10px] text-muted-foreground">
+                      Lowercase letters, numbers, dot, underscore. Used for friends + coaches.
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <Label>Gender</Label>
@@ -9093,6 +9129,7 @@ function SettingsPanel({
     const completed =
       nextProfile.completed ||
               (!!nextProfile.name.trim() &&
+                !!nextProfile.username?.trim() &&
                 Number(nextProfile.age) > 0 &&
                 Number(nextProfile.height) > 0 &&
                 Number(nextProfile.weight) > 0 &&
@@ -9114,8 +9151,11 @@ function SettingsPanel({
               <Label>Username</Label>
               <Input
                 value={settings.profile.username || ""}
-                onChange={(e) => updateProfile({ username: e.target.value })}
+                onChange={(e) => updateProfile({ username: sanitizeUsername(e.target.value) })}
                 placeholder="forgeathlete"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
               />
               <div className="text-xs text-muted-foreground">
                 Used for friends search and your social profile.

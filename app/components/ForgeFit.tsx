@@ -2203,9 +2203,10 @@ useEffect(() => {
               for (const row of commentsRes.data || []) {
                 const key = row.post_id;
                 if (!commentMap[key]) commentMap[key] = [];
+                const authorRecord = Array.isArray(row.author) ? row.author[0] : row.author;
                 commentMap[key].push({
                   id: row.id,
-                  author: row.author?.username || "Athlete",
+                  author: authorRecord?.username || "Athlete",
                   body: row.body,
                   createdAt: row.created_at,
                 });

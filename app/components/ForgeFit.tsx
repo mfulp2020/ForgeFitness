@@ -8377,7 +8377,7 @@ function GetStartedScreen({ onStart }: { onStart: () => void }) {
             <div className="absolute inset-0 bg-gradient-to-r from-background via-background/85 to-background/20" />
             <div className="absolute inset-0 bg-black/30" />
           </div>
-          <div className="relative z-10 w-full max-w-xl space-y-5 rounded-3xl border border-foreground/20 bg-background/85 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.4)] backdrop-blur">
+          <div className="relative z-10 w-full max-w-xl space-y-5 px-4 py-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-foreground/20 px-4 py-2 text-xs uppercase tracking-[0.3em] text-muted-foreground">
               Forge Fitness • Iron Edition
             </div>

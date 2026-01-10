@@ -3773,11 +3773,13 @@ const headerStats = useMemo(() => {
 
   useEffect(() => {
     if (!supabaseEnabled) return;
-    supabase.auth.getSession().then(({ data }) => {
+    const supabaseClient = supabase;
+    if (!supabaseClient) return;
+    supabaseClient.auth.getSession().then(({ data }) => {
       setAuthUser(data.session?.user ?? null);
       setAuthReady(true);
     });
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabaseClient.auth.onAuthStateChange((_event, session) => {
       setAuthUser(session?.user ?? null);
       setAuthReady(true);
     });
@@ -3830,13 +3832,14 @@ const headerStats = useMemo(() => {
       setRemoteLoaded(false);
       return;
     }
-    if (!supabase) return;
+    const supabaseClient = supabase;
+    if (!supabaseClient) return;
     let canceled = false;
     const loadRemote = async () => {
       const [stateRes, sessionsRes, weighRes] = await Promise.all([
-        supabase.from("user_data").select("state").eq("user_id", authUser.id).single(),
-        supabase.from("user_sessions").select("session").eq("user_id", authUser.id),
-        supabase.from("user_weighins").select("date_iso, weight").eq("user_id", authUser.id),
+        supabaseClient.from("user_data").select("state").eq("user_id", authUser.id).single(),
+        supabaseClient.from("user_sessions").select("session").eq("user_id", authUser.id),
+        supabaseClient.from("user_weighins").select("date_iso, weight").eq("user_id", authUser.id),
       ]);
       if (canceled) return;
       const remoteState = stateRes.data?.state as AppState | undefined;
@@ -3902,8 +3905,10 @@ const headerStats = useMemo(() => {
 
   useEffect(() => {
     if (!supabaseEnabled || !authUser || !remoteLoaded) return;
+    const supabaseClient = supabase;
+    if (!supabaseClient) return;
     const id = window.setTimeout(() => {
-      supabase
+      supabaseClient
         .from("user_data")
         .upsert(
           {
@@ -3921,12 +3926,14 @@ const headerStats = useMemo(() => {
   }, [supabaseEnabled, authUser, remoteLoaded, state]);
 
   const syncNow = async (nextState?: AppState) => {
-    if (!supabaseEnabled || !authUser || !supabase) return;
+    if (!supabaseEnabled || !authUser) return;
+    const supabaseClient = supabase;
+    if (!supabaseClient) return;
     const payload = nextState || stateRef.current || state;
     setSyncStatus("syncing");
     setSyncError("");
     const [stateRes, sessionsRes, weighRes] = await Promise.all([
-      supabase.from("user_data").upsert(
+      supabaseClient.from("user_data").upsert(
         {
           user_id: authUser.id,
           state: payload,
@@ -3934,7 +3941,7 @@ const headerStats = useMemo(() => {
         },
         { onConflict: "user_id" }
       ),
-      supabase.from("user_sessions").upsert(
+      supabaseClient.from("user_sessions").upsert(
         (payload.sessions || []).map((s) => ({
           user_id: authUser.id,
           session_id: s.id,
@@ -3943,7 +3950,7 @@ const headerStats = useMemo(() => {
         })),
         { onConflict: "session_id" }
       ),
-      supabase.from("user_weighins").upsert(
+      supabaseClient.from("user_weighins").upsert(
         (payload.weighIns || []).map((w) => ({
           user_id: authUser.id,
           date_iso: w.dateISO,

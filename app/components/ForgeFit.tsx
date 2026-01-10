@@ -64,6 +64,7 @@ import {
   User,
   UserPlus,
   MessageCircle,
+  Grid3X3,
   Send,
   Loader2,
   Settings as SettingsIcon,
@@ -6159,12 +6160,104 @@ const headerStats = useMemo(() => {
 
             <TabsContent value="profile" className="mt-0">
               <motion.div variants={pageMotion} initial="hidden" animate="show" className="space-y-4">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
-                    My profile
-                  </div>
-                  <div className="text-3xl font-display uppercase">Profile</div>
-                </div>
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-3xl shadow-lg card-hero overflow-hidden">
+                    <CardContent className="p-6">
+                      <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="relative h-20 w-20 rounded-3xl bg-black/90 text-white flex items-center justify-center text-3xl font-display uppercase tracking-[0.2em] shadow-[0_20px_40px_rgba(0,0,0,0.35)]">
+                            {(state.settings.profile.name || state.settings.profile.username || "FF")
+                              .split(" ")
+                              .map((s) => s.slice(0, 1))
+                              .join("")
+                              .slice(0, 2)}
+                          </div>
+                          <div>
+                            <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                              @{state.settings.profile.username || "forgeathlete"}
+                            </div>
+                            <div className="text-3xl font-display uppercase tracking-[0.2em]">
+                              {state.settings.profile.name || "Forge Athlete"}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              Build. Track. Earn it.
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button className="rounded-2xl" onClick={() => setSettingsDialogOpen(true)}>
+                            Edit profile
+                          </Button>
+                          <Button variant="outline" className="rounded-2xl" onClick={() => setActiveTab("social")}>
+                            View feed
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="mt-6 grid grid-cols-3 gap-3 text-center">
+                        <div className="rounded-2xl border border-foreground/10 bg-background/70 py-3">
+                          <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                            Sessions
+                          </div>
+                          <div className="text-2xl font-display">{headerStats.totalSessions}</div>
+                        </div>
+                        <div className="rounded-2xl border border-foreground/10 bg-background/70 py-3">
+                          <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                            Streak
+                          </div>
+                          <div className="text-2xl font-display">{headerStats.streak}d</div>
+                        </div>
+                        <div className="rounded-2xl border border-foreground/10 bg-background/70 py-3">
+                          <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                            7d Volume
+                          </div>
+                          <div className="text-2xl font-display">
+                            {Math.round(headerStats.vol7d).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div variants={cardMotion}>
+                  <Card className="rounded-3xl shadow-md card-glass">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-display uppercase tracking-[0.2em] text-sm md:text-base">
+                        <Grid3X3 className="h-5 w-5" /> My feed
+                      </CardTitle>
+                      <CardDescription>Recent sessions and highlights.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {[...state.sessions]
+                          .sort((a, b) => new Date(b.dateISO).getTime() - new Date(a.dateISO).getTime())
+                          .slice(0, 9)
+                          .map((s) => {
+                            const volume = s.entries.reduce((acc, e) => acc + calcEntryVolume(e), 0);
+                            return (
+                              <div key={s.id} className="rounded-2xl border border-foreground/10 bg-background/70 p-3">
+                                <div className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
+                                  {new Date(s.dateISO).toLocaleDateString(undefined, {
+                                    month: "short",
+                                    day: "numeric",
+                                  })}
+                                </div>
+                                <div className="mt-2 font-medium">{s.templateName || "Session"}</div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {Math.round(volume).toLocaleString()} vol • {s.entries.length} lifts
+                                </div>
+                              </div>
+                            );
+                          })}
+                        {state.sessions.length === 0 ? (
+                          <div className="col-span-full text-sm text-muted-foreground">
+                            Log your first session to build your feed.
+                          </div>
+                        ) : null}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
 
                 <motion.div variants={cardMotion}>
                   <Card className="rounded-2xl shadow-md card-minimal">

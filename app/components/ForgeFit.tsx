@@ -2042,7 +2042,7 @@ useEffect(() => {
   } | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [restRunning, setRestRunning] = useState(false);
-  const [restPresetSec, setRestPresetSec] = useState(90);
+  const [restPickerOpen, setRestPickerOpen] = useState(false);
   const [restTargetSec, setRestTargetSec] = useState(0);
   const [autoAdvanceAfterRest, setAutoAdvanceAfterRest] = useState(false);
   const [showGymNotes, setShowGymNotes] = useState(false);
@@ -3612,8 +3612,7 @@ useEffect(() => {
   const currentGymEntry = currentGymStep
     ? workingEntries.find((e) => e.exerciseId === currentGymStep.exerciseId)
     : undefined;
-  const effectiveRestSec =
-    restPresetSec || currentGymEntry?.templateHint?.restSec || 0;
+  const effectiveRestSec = currentGymEntry?.templateHint?.restSec || 0;
   const currentGymSet =
     currentGymEntry && currentGymStep
       ? currentGymEntry.sets[currentGymStep.setIndex] || {
@@ -3652,7 +3651,7 @@ useEffect(() => {
   const weightQuickValues = useMemo(() => {
     const presets =
       state.settings.units === "lb"
-        ? [45, 95, 135, 185, 225, 275]
+        ? [45, 90, 135, 185, 225, 275]
         : [20, 40, 60, 80, 100, 120];
     return [historyTop, ...presets]
       .filter((v) => v > 0)
@@ -4690,30 +4689,71 @@ const headerStats = useMemo(() => {
                     />
                   </div>
                 ) : null}
+                {restPickerOpen ? (
+                  <div className="rounded-xl border border-foreground/10 bg-background/70 p-2 space-y-2">
+                    <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                      Select rest
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {[30, 60, 90, 120].map((sec) => (
+                        <Button
+                          key={sec}
+                          size="sm"
+                          variant="outline"
+                          className="rounded-lg h-7 px-2 text-[11px]"
+                          onClick={() => {
+                            setRestPickerOpen(false);
+                            setRestSeconds(sec);
+                            setRestTargetSec(sec);
+                            setRestRunning(sec > 0);
+                            setAutoAdvanceAfterRest(true);
+                            if (sec > 0) {
+                              setTotalRestSec((v) => v + sec);
+                              setRestCount((v) => v + 1);
+                            } else {
+                              advanceGymStep();
+                            }
+                          }}
+                        >
+                          {formatMMSS(sec)}
+                        </Button>
+                      ))}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-lg h-7 px-2 text-[11px]"
+                        onClick={() => {
+                          const sec = currentGymEntry?.templateHint?.restSec ?? 90;
+                          setRestPickerOpen(false);
+                          setRestSeconds(sec);
+                          setRestTargetSec(sec);
+                          setRestRunning(sec > 0);
+                          setAutoAdvanceAfterRest(true);
+                          if (sec > 0) {
+                            setTotalRestSec((v) => v + sec);
+                            setRestCount((v) => v + 1);
+                          } else {
+                            advanceGymStep();
+                          }
+                        }}
+                      >
+                        Use target
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="rounded-lg h-7 px-2 text-[11px]"
+                        onClick={() => {
+                          setRestPickerOpen(false);
+                          advanceGymStep();
+                        }}
+                      >
+                        Skip rest
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                  <span>Rest preset</span>
-                  {[60, 90, 120, 150].map((sec) => (
-                    <Button
-                      key={sec}
-                      size="sm"
-                      variant={restPresetSec === sec ? "secondary" : "outline"}
-                      className="rounded-lg h-6 px-1.5 text-[11px]"
-                      onClick={() => setRestPresetSec(sec)}
-                    >
-                      {Math.floor(sec / 60)}:{String(sec % 60).padStart(2, "0")}
-                    </Button>
-                  ))}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-lg h-6 px-2 text-[11px]"
-                    onClick={() => {
-                      const v = currentGymEntry?.templateHint?.restSec ?? 90;
-                      setRestPresetSec(v);
-                    }}
-                  >
-                    Use target
-                  </Button>
                   <Button
                     type="button"
                     variant="outline"
@@ -4741,20 +4781,8 @@ const headerStats = useMemo(() => {
                 <Button
                   className="rounded-2xl flex-1 h-9 text-xs"
                   onClick={() => {
-                    const restFromTemplate = currentGymEntry?.templateHint?.restSec ?? 0;
-                    const nextRest = restPresetSec || restFromTemplate || 0;
                     triggerHaptic(40);
-                    setRestSeconds(nextRest);
-                    setRestTargetSec(nextRest);
-                    setRestRunning(nextRest > 0);
-                    setAutoAdvanceAfterRest(true);
-                    if (nextRest > 0) {
-                      setTotalRestSec((v) => v + nextRest);
-                      setRestCount((v) => v + 1);
-                    }
-                    if (nextRest <= 0) {
-                      advanceGymStep();
-                    }
+                    setRestPickerOpen(true);
                   }}
                 >
                   Complete set
@@ -7634,8 +7662,14 @@ function MetricStepper({
       </div>
 
       {uniqueQuick.length ? (
-        <div className={`flex flex-wrap items-center gap-2 ${compact ? "mt-1.5" : "mt-2"}`}>
-          <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+        <div
+          className={`flex flex-wrap items-center ${compact ? "gap-1.5 mt-1" : "gap-2 mt-2"}`}
+        >
+          <div
+            className={`uppercase tracking-[0.3em] text-muted-foreground ${
+              compact ? "text-[9px]" : "text-[10px]"
+            }`}
+          >
             Quick set
           </div>
           {uniqueQuick.map((preset) => (
@@ -7643,7 +7677,7 @@ function MetricStepper({
               key={`preset-${preset}`}
               size="sm"
               variant="outline"
-              className={`rounded-full px-3 text-[11px] ${compact ? "h-6" : ""}`}
+              className={`rounded-full px-3 text-[11px] ${compact ? "h-5 px-2 text-[10px] leading-none" : ""}`}
               onClick={() => applyValue(preset)}
             >
               {formatValue(preset)}
@@ -7653,8 +7687,14 @@ function MetricStepper({
       ) : null}
 
       {quickAdjust.length ? (
-        <div className={`flex flex-wrap items-center gap-2 ${compact ? "mt-1" : "mt-1.5"}`}>
-          <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+        <div
+          className={`flex flex-wrap items-center ${compact ? "gap-1.5 mt-1" : "gap-2 mt-1.5"}`}
+        >
+          <div
+            className={`uppercase tracking-[0.3em] text-muted-foreground ${
+              compact ? "text-[9px]" : "text-[10px]"
+            }`}
+          >
             Quick adjust
           </div>
           {quickAdjust.map((adj) => (
@@ -7662,7 +7702,7 @@ function MetricStepper({
               key={adj.label}
               size="sm"
               variant="secondary"
-              className={`rounded-full px-3 text-[11px] ${compact ? "h-6" : ""}`}
+              className={`rounded-full px-3 text-[11px] ${compact ? "h-5 px-2 text-[10px] leading-none" : ""}`}
               onClick={() => applyValue(clamped + adj.delta)}
             >
               {adj.label}

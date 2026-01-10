@@ -2572,8 +2572,10 @@ useEffect(() => {
       setShowPRCelebration(true);
     }
     setRecapOpen(true);
-    if (supabaseEnabled && authUser && supabase) {
-      supabase
+    if (supabaseEnabled && authUser) {
+      const supabaseClient = supabase;
+      if (!supabaseClient) return;
+      supabaseClient
         .from("user_sessions")
         .upsert(
           {
@@ -2588,10 +2590,12 @@ useEffect(() => {
           if (error) console.warn("Supabase session upsert error", error.message);
         });
     }
-    if (supabaseEnabled && authUser && supabase) {
+    if (supabaseEnabled && authUser) {
+      const supabaseClient = supabase;
+      if (!supabaseClient) return;
       const share = state.settings.profile;
       if (share.shareWorkouts) {
-        supabase.from("social_posts").insert({
+        supabaseClient.from("social_posts").insert({
           actor_id: authUser.id,
           type: "workout",
           payload: {
@@ -2603,7 +2607,7 @@ useEffect(() => {
         });
       }
       if (share.sharePRs && prCount > 0) {
-        supabase.from("social_posts").insert({
+        supabaseClient.from("social_posts").insert({
           actor_id: authUser.id,
           type: "pr",
           payload: {
@@ -2613,7 +2617,7 @@ useEffect(() => {
         });
       }
       if (share.shareStreaks && headerStats.streak > 0) {
-        supabase.from("social_posts").insert({
+        supabaseClient.from("social_posts").insert({
           actor_id: authUser.id,
           type: "streak",
           payload: {
@@ -3117,7 +3121,9 @@ useEffect(() => {
       return { ...p, weighIns: [{ dateISO: todayKey, weight: value }, ...next] };
     });
     if (supabaseEnabled && authUser) {
-      supabase
+      const supabaseClient = supabase;
+      if (!supabaseClient) return;
+      supabaseClient
         .from("user_weighins")
         .upsert(
           {
@@ -3131,8 +3137,10 @@ useEffect(() => {
           if (error) console.warn("Supabase weigh-in upsert error", error.message);
         });
     }
-    if (supabaseEnabled && authUser && supabase && state.settings.profile.shareWeighIns) {
-      supabase.from("social_posts").insert({
+    if (supabaseEnabled && authUser && state.settings.profile.shareWeighIns) {
+      const supabaseClient = supabase;
+      if (!supabaseClient) return;
+      supabaseClient.from("social_posts").insert({
         actor_id: authUser.id,
         type: "weighin",
         payload: { weight: value, dateISO: todayKey },

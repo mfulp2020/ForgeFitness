@@ -3,6 +3,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import type { Variants } from "framer-motion";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import {
   Card,
@@ -1832,27 +1833,27 @@ const defaultState: AppState = {
   },
 };
 
-const pageMotion = {
+const pageMotion: Variants = {
   hidden: { opacity: 0, y: 8 },
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1], when: "beforeChildren", staggerChildren: 0.04 },
+    transition: { duration: 0.22, ease: "easeOut", when: "beforeChildren", staggerChildren: 0.04 },
   },
   exit: { opacity: 0, y: 6, transition: { duration: 0.16 } },
 };
 
-const cardMotion = {
+const cardMotion: Variants = {
   hidden: { opacity: 0, y: 10, scale: 0.985 },
-  show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] } },
+  show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.24, ease: "easeOut" } },
 };
 
-const listMotion = {
+const listMotion: Variants = {
   hidden: {},
   show: { transition: { staggerChildren: 0.03 } },
 };
 
-const listItemMotion = {
+const listItemMotion: Variants = {
   hidden: { opacity: 0, y: 6 },
   show: { opacity: 1, y: 0, transition: { duration: 0.2, ease: "easeOut" } },
 };

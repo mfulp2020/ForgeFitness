@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="ForgeFit hero">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b0b0f" />
+      <stop offset="50%" stop-color="#14151b" />
+      <stop offset="100%" stop-color="#0a0a0c" />
+    </linearGradient>
+    <linearGradient id="forge" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f97316" />
+      <stop offset="50%" stop-color="#ef4444" />
+      <stop offset="100%" stop-color="#b91c1c" />
+    </linearGradient>
+    <linearGradient id="steel" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e5e7eb" stop-opacity="0.6" />
+      <stop offset="50%" stop-color="#9ca3af" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#e5e7eb" stop-opacity="0.6" />
+    </linearGradient>
+    <radialGradient id="glow" cx="20%" cy="10%" r="70%">
+      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.35" />
+      <stop offset="60%" stop-color="#0b0b0f" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="900" fill="url(#bg)" />
+  <rect width="1200" height="900" fill="url(#glow)" />
+  <path d="M140 120h920v30H140z" fill="#1f1f27" />
+  <path d="M140 760h920v30H140z" fill="#1f1f27" />
+  <path
+    d="M600 120l320 130v250c0 160-140 260-320 300-180-40-320-140-320-300V250z"
+    fill="#111217"
+    stroke="url(#forge)"
+    stroke-width="10"
+  />
+  <rect x="320" y="430" width="560" height="40" rx="20" fill="url(#steel)" />
+  <rect x="275" y="395" width="55" height="110" rx="12" fill="#111217" stroke="url(#forge)" stroke-width="6" />
+  <rect x="870" y="395" width="55" height="110" rx="12" fill="#111217" stroke="url(#forge)" stroke-width="6" />
+  <path d="M520 300h160v44h-100v40h88v44h-88v110h-60z" fill="url(#forge)" />
+  <path d="M120 640h280v18H120z" fill="#1f1f27" />
+  <path d="M800 260h280v18H800z" fill="#1f1f27" />
+</svg>

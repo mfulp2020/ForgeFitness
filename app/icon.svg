@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ForgeFit icon">
+  <defs>
+    <linearGradient id="forge" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f97316" />
+      <stop offset="50%" stop-color="#ef4444" />
+      <stop offset="100%" stop-color="#b91c1c" />
+    </linearGradient>
+    <linearGradient id="steel" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e5e7eb" stop-opacity="0.6" />
+      <stop offset="50%" stop-color="#9ca3af" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#e5e7eb" stop-opacity="0.6" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="120" fill="#0a0a0c" />
+  <path
+    d="M256 56L414 124v150c0 96-70 156-158 180-88-24-158-84-158-180V124z"
+    fill="#111217"
+    stroke="url(#forge)"
+    stroke-width="10"
+  />
+  <rect x="110" y="238" width="292" height="36" rx="18" fill="url(#steel)" />
+  <rect x="78" y="210" width="40" height="92" rx="10" fill="#111217" stroke="url(#forge)" stroke-width="6" />
+  <rect x="394" y="210" width="40" height="92" rx="10" fill="#111217" stroke="url(#forge)" stroke-width="6" />
+  <path
+    d="M216 176h96v28h-60v32h52v28h-52v72h-36z"
+    fill="url(#forge)"
+  />
+</svg>

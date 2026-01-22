@@ -1,0 +1,295 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Allows `dark:` classes to work when `.dark` is on a parent */
+@custom-variant dark (&:is(.dark *));
+
+/* Map your CSS theme tokens into Tailwind color names like bg-background, border-border, etc */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* =========================
+   SHADCN THEME VARIABLES
+   (these are your actual colors)
+   ========================= */
+
+:root,
+:root[data-theme="iron"],
+:root[data-theme="noir"],
+:root[data-theme="dune"] {
+  --radius: 0.625rem;
+  --radius-card: 1.5rem;
+  --radius-input: 1.125rem;
+  --radius-pill: 999px;
+
+  --font-body: "Sora", "Inter", "Helvetica Neue", system-ui, -apple-system, sans-serif;
+  --font-display: "Bebas Neue", "Oswald", "Segoe UI", system-ui, sans-serif;
+
+  --background: #050608;
+  --foreground: #f8fafc;
+
+  --card: rgba(255, 255, 255, 0.04);
+  --card-foreground: #f8fafc;
+
+  --popover: rgba(255, 255, 255, 0.04);
+  --popover-foreground: #f8fafc;
+
+  --primary: #ff1e3a;
+  --primary-foreground: #ffffff;
+
+  --secondary: rgba(255, 255, 255, 0.12);
+  --secondary-foreground: rgba(248, 250, 252, 0.85);
+
+  --muted: #94a3b8;
+  --muted-foreground: #d1d5db;
+
+  --accent: #ff1e3a;
+  --accent-foreground: #ffffff;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: rgba(255, 40, 70, 0.75);
+
+  --glow-a: rgba(255, 30, 58, 0.1);
+  --glow-b: rgba(255, 30, 58, 0.06);
+  --glow-c: rgba(255, 30, 58, 0.04);
+  --grid-color: rgba(255, 255, 255, 0.05);
+  --dot-color: rgba(255, 255, 255, 0.08);
+  --title-from: #e2e8f0;
+  --title-via: #94a3b8;
+  --title-to: #b91c1c;
+  --icon-glow: rgba(255, 30, 58, 0.35);
+
+  --shadow-card: 0 24px 70px rgba(0, 0, 0, 0.55);
+  --shadow-accent: 0 18px 50px rgba(255, 30, 58, 0.25);
+  --shadow-elev-1: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-elev-2: 0 16px 40px rgba(0, 0, 0, 0.45);
+
+  --ff-surface: var(--card);
+  --ff-surface-2: var(--popover);
+  --ff-glass: rgba(255, 255, 255, 0.03);
+  --ff-hairline: rgba(255, 255, 255, 0.08);
+  --ff-shadow-card: var(--shadow-card);
+  --ff-shadow-float: 0 24px 60px rgba(0, 0, 0, 0.55);
+  --ff-shadow-press: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.dark,
+.dark[data-theme="iron"],
+.dark[data-theme="noir"],
+.dark[data-theme="dune"] {
+  --radius: 0.625rem;
+  --radius-card: 1.5rem;
+  --radius-input: 1.125rem;
+  --radius-pill: 999px;
+
+  --background: #050608;
+  --foreground: #f8fafc;
+
+  --card: rgba(255, 255, 255, 0.04);
+  --card-foreground: #f8fafc;
+
+  --popover: rgba(255, 255, 255, 0.04);
+  --popover-foreground: #f8fafc;
+
+  --primary: #ff1e3a;
+  --primary-foreground: #ffffff;
+
+  --secondary: rgba(255, 255, 255, 0.12);
+  --secondary-foreground: rgba(248, 250, 252, 0.85);
+
+  --muted: #94a3b8;
+  --muted-foreground: #d1d5db;
+
+  --accent: #ff1e3a;
+  --accent-foreground: #ffffff;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: rgba(255, 40, 70, 0.75);
+
+  --glow-a: rgba(255, 30, 58, 0.1);
+  --glow-b: rgba(255, 30, 58, 0.06);
+  --glow-c: rgba(255, 30, 58, 0.04);
+  --grid-color: rgba(255, 255, 255, 0.05);
+  --dot-color: rgba(255, 255, 255, 0.08);
+  --title-from: #e2e8f0;
+  --title-via: #94a3b8;
+  --title-to: #b91c1c;
+  --icon-glow: rgba(255, 30, 58, 0.35);
+
+  --shadow-card: 0 24px 70px rgba(0, 0, 0, 0.55);
+  --shadow-accent: 0 18px 50px rgba(255, 30, 58, 0.25);
+  --shadow-elev-1: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-elev-2: 0 16px 40px rgba(0, 0, 0, 0.45);
+
+  --ff-surface: var(--card);
+  --ff-surface-2: var(--popover);
+  --ff-glass: rgba(255, 255, 255, 0.03);
+  --ff-hairline: rgba(255, 255, 255, 0.08);
+  --ff-shadow-card: var(--shadow-card);
+  --ff-shadow-float: 0 24px 60px rgba(0, 0, 0, 0.55);
+  --ff-shadow-press: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* =========================
+   BASE STYLES (NO @apply)
+   Avoids Tailwind v4 @apply/@reference issues
+   ========================= */
+@layer base {
+  * {
+    border-color: var(--border);
+    outline-color: var(--ring);
+  }
+
+  html {
+    background-color: var(--background);
+    background-image:
+      radial-gradient(900px 600px at 50% 0%, rgba(255, 30, 58, 0.1), transparent 60%),
+      radial-gradient(700px 500px at 50% 90%, rgba(255, 30, 58, 0.06), transparent 65%),
+      linear-gradient(to bottom, #050608 0%, #0b0d10 45%, #07080b 100%);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-attachment: fixed;
+  }
+
+  body {
+    background-color: transparent;
+    background-image: none;
+    color: var(--foreground);
+    font-family: var(--font-body), sans-serif;
+    min-height: 100vh;
+    position: relative;
+    isolation: isolate;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.05;
+    pointer-events: none;
+    mix-blend-mode: lighten;
+    background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0MDAnIGhlaWdodD0nNDAwJyB2aWV3Qm94PScwIDAgNDAwIDQwMCc+PGZpbHRlciBpZD0nbm9pc2UnIHg9JzAnIHk9JzAnIHdpZHRoPScxJyBoZWlnaHQ9JzEnPjxmZVR1cmJ1bGVuY2UgdHlwZT0nZnJhY3RhbE5vaXNlJyBiYXNlRnJlcXVlbmN5PScwLjgnIG51bU9jdGF2ZXM9JzInIHN0aXRjaFRpbGVzPSdzdGl0Y2gnLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0nNDAwJyBoZWlnaHQ9JzQwMCcgZmlsdGVyPSd1cmwoI25vaXNlKScgb3BhY2l0eT0nMC40Jy8+PC9zdmc+");
+    background-size: 400px 400px;
+  }
+
+  body > * {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+/* iOS Safari struggles with fixed background layers; fall back to scroll so glows still show */
+@supports (-webkit-touch-callout: none) {
+  html {
+    background-attachment: scroll;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display), sans-serif;
+    letter-spacing: 0.08em;
+  }
+
+  .ff-h1 {
+    font-family: var(--font-display), sans-serif;
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    line-height: 1.05;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .ff-h2 {
+    font-family: var(--font-display), sans-serif;
+    font-size: clamp(1.5rem, 3vw, 2.1rem);
+    line-height: 1.15;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .ff-h3 {
+    font-size: 1.1rem;
+    line-height: 1.3;
+    font-weight: 600;
+  }
+
+  .ff-body {
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+
+  .ff-body-sm {
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  .ff-kicker {
+    font-size: 0.7rem;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+  }
+
+  .ff-caption {
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+
+  .ff-surface {
+    background-color: var(--ff-surface);
+  }
+
+  .ff-glass {
+    background-color: var(--ff-glass);
+    backdrop-filter: blur(16px);
+  }
+
+  .card-inset {
+    background-color: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 18px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 12px 30px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(18px) saturate(140%);
+  }
+}

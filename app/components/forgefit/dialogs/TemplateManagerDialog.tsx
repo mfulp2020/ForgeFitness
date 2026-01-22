@@ -314,7 +314,8 @@ export function TemplateManagerDialog({
   const isCoach = role === "coach";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[calc(100vw-2rem)] max-w-5xl max-h-[85vh] overflow-y-auto overflow-x-hidden rounded-2xl">
         <DialogHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -569,9 +570,9 @@ export function TemplateManagerDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+      </Dialog>
 
-    <Dialog open={exercisePickerOpen} onOpenChange={setExercisePickerOpen}>
+      <Dialog open={exercisePickerOpen} onOpenChange={setExercisePickerOpen}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>{pickerSwapId ? "Swap exercise" : "Add exercise"}</DialogTitle>
@@ -736,6 +737,7 @@ export function TemplateManagerDialog({
           <Button onClick={() => setExercisePickerOpen(false)}>Done</Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </>
   );
 }

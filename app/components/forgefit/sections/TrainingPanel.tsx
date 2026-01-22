@@ -160,7 +160,7 @@ export function TrainingPanel(props: { ctx: any }) {
   const scheduledTemplateOptions = useMemo(() => {
     const schedule = state.settings.schedule || emptySchedule;
     return (WEEKDAYS || [])
-      .map((day) => {
+      .map((day: (typeof WEEKDAYS)[number]) => {
         const templateId = schedule[day.key];
         if (!templateId || templateId === "rest") return null;
         const match = (state.templates || []).find((t: any) => t.id === templateId);

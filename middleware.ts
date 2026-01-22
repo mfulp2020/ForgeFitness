@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
 const isPublicRoute = createRouteMatcher([
   "/",
@@ -8,13 +9,20 @@ const isPublicRoute = createRouteMatcher([
   "/manifest.webmanifest",
 ]);
 
-export default clerkMiddleware((auth, req) => {
-  // In local dev, allow all routes so LAN/mobile testing works.
-  // (Clerk returnBackUrl can otherwise redirect to localhost, which breaks on phones.)
-  if (process.env.NODE_ENV !== "production") return;
+const clerkEnabled =
+  !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && !!process.env.CLERK_SECRET_KEY;
 
-  if (!isPublicRoute(req)) auth.protect();
-});
+const middleware = clerkEnabled
+  ? clerkMiddleware((auth, req) => {
+      // In local dev, allow all routes so LAN/mobile testing works.
+      // (Clerk returnBackUrl can otherwise redirect to localhost, which breaks on phones.)
+      if (process.env.NODE_ENV !== "production") return;
+
+      if (!isPublicRoute(req)) auth.protect();
+    })
+  : () => NextResponse.next();
+
+export default middleware;
 
 export const config = {
   matcher: [
